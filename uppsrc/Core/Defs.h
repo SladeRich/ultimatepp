@@ -298,6 +298,7 @@ bool CpuMMX();
 bool CpuSSE();
 bool CpuSSE2();
 bool CpuSSE3();
+bool CpuAES();
 bool CpuHypervisor();
 bool CpuAVX();
 #endif
