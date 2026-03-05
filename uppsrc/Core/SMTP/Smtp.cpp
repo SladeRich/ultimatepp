@@ -226,18 +226,32 @@ void Smtp::SendData(const String &s)
 // Smtp::
 
 static const char default_mime[] = "application/octet-stream";
+static const char default_disposition[] = "attachment"; // Include attachment disposition
 
 String Smtp::Encode(const String& text)
 {
-	String txt = ToCharset(CHARSET_UTF8, text);
-	String r = "=?UTF-8?Q?";
-	for(const char *s = txt; *s; s++) {
-		if((byte)*s < ' ' || (byte)*s > 127 || *s == '=' || *s == '?' || *s == ' ')
-			r << '=' << FormatIntHexUpper((byte)*s, 2);
-		else
-			r.Cat(*s);
+	String r;
+	bool nonAscii7 = false; // Check if there are any characters that are not 7 bit ASCII - in the text
+	for (const char *p=~text; *p; p++) {
+		if((byte)*p > 127) {
+			nonAscii7 = true;
+			break;
+		}
 	}
-	r << "?=";
+	if (nonAscii7) { // Text contains non 7 bit ASCII characters, so use UTF-8 encoding
+		String txt = ToUtf8(ToUnicode(text,CHARSET_DEFAULT));
+		r = "=?UTF-8?Q?";
+		for(const char *s = txt; *s; s++) {
+			if((byte)*s <= ' ' || (byte)*s > 127 || *s == '=' || *s == '?') {
+				r << '=' << FormatIntHexUpper((byte)*s, 2);
+			} else {
+				r.Cat(*s);
+			}
+		}
+		r << "?=";
+	} else {
+		r = text;
+	}
 	return r;
 }
 
@@ -275,15 +289,18 @@ Smtp& Smtp::AttachFile(const char *filename, const char *mime)
 	Attachment& attach = attachments.Add();
 	attach.name = GetFileNamePos(filename);
 	attach.mime = (mime ? mime : default_mime);
+	attach.disposition = default_disposition; // Include attachment disposition
 	attach.file = filename;
 	return *this;
 }
 
-Smtp& Smtp::Attach(const char *name, const String& data, const char *mime)
+Smtp& Smtp::Attach(const char *name, const String& data, const char *mime, const char *disposition, const char *contentId)
 {
 	Attachment& attach = attachments.Add();
 	attach.name = name;
 	attach.mime = (mime ? mime : default_mime);
+	attach.disposition = (disposition ? disposition : default_disposition); // Include attachment disposition
+	if (contentId) attach.contentId = contentId; // Include attachment content ID
 	attach.data = data;
 	return *this;
 }
@@ -310,9 +327,14 @@ bool Smtp::NoAdd(const char *id)
 
 String Smtp::GetMessage(bool chunks)
 {
+	int at = 0;
+	int total=body.GetCount() + 3 + body.GetCount() + attachments.GetCount();
+	WhenProgressing(0,total); // Providing progress updates for generating large emails
 	String delimiter = "?";
-	for(int i = 0; i < body.GetCount(); i++)
+	for(int i = 0; i < body.GetCount(); i++) {
 		delimiter = GetDelimiter(body[i], delimiter);
+		WhenProgressing(++at, total);
+	}
 	bool alter = body.GetCount() > 1;
 	bool multi = !attachments.IsEmpty();
 
@@ -347,6 +369,7 @@ String Smtp::GetMessage(bool chunks)
 				}
 			if(pos)
 				msg << "\r\n";
+			WhenProgressing(++at, total);
 		}
 		if(!IsNull(subject) && NoAdd("Subject"))
 			msg << "Subject: " << Encode(subject) << "\r\n";
@@ -415,6 +438,7 @@ String Smtp::GetMessage(bool chunks)
 
 		if(!begin)
 			msg.Cat("\r\n");
+		WhenProgressing(++at, total);
 	}
 	for(int i = 0; i < attachments.GetCount(); i++) {
 		const Attachment& a = attachments[i];
@@ -443,6 +467,7 @@ String Smtp::GetMessage(bool chunks)
 				msg = Null;
 			}
 		}
+		WhenProgressing(++at, total);
 	}
 	if(multi || alter)
 		msg << "--" << delimiter << "--\r\n";

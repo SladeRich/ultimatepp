@@ -11,6 +11,8 @@ class Smtp : public TcpSocket {
         String name; // mail name
         String file; // source path (dynamic attachments only)
         String mime; // content type (application/octet-stream by default)
+        String disposition; // content type (attachment by default)
+        String contentId; // content ID
         String data;
     };
 
@@ -70,6 +72,7 @@ class Smtp : public TcpSocket {
 
 public:
 	enum AS { TO, CC, BCC };
+	Event<int,int> WhenProgressing; // Enable progress reporting when generating the email
 
 	Smtp&      RequestTimeout(int ms)                             { request_timeout = ms; return *this; }
 	Smtp&      Host(const String& h)                              { host = h; return *this; }
@@ -89,7 +92,7 @@ public:
 	Smtp&      NoHeader()                                         { no_header = true; return *this; }
 	Smtp&      NoHeaderSep()                                      { no_header_sep = true; return *this; }
 	Smtp&      AttachFile(const char *filename, const char *mime = 0);
-	Smtp&      Attach(const char *name, const String& data, const char *mime = 0);
+	Smtp&      Attach(const char *name, const String& data, const char *mime = 0, const char *disposition=0, const char *contentId=0); // Include disposition and contentId
 	Smtp&      AddHeader(const String& text)                      { add_header << text << "\r\n"; return *this; }
 	Smtp&      AddHeader(const char *id, const String& txt)       { add_header << id << ": " << txt << "\r\n"; return *this; }
 
