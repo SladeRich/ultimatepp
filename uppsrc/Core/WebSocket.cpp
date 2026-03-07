@@ -380,8 +380,10 @@ void WebSocket::Do0()
 		prev_opcode = opcode;
 		if(findarg(opcode, DNS, SSL_HANDSHAKE) < 0) {
 			Output();
-			if(socket->IsEof() && !(close_sent || close_received))
+			if(socket->IsEof() && !(close_sent || close_received)) {
 				Error("Socket has been closed unexpectedly");
+				socket->Close(); // Ensure web socket does not hang
+			}
 		}
 		if(IsError())
 			return;

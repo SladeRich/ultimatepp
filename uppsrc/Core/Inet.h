@@ -135,7 +135,8 @@ class Socket : NoCopy {
 	One<SSLInfo>            sslinfo;
 	String                  cert, pkey, sni;
 	bool                    asn1;
-	
+	Vector<String>          certchain;
+
 	String                  ca_cert;
 
 	struct SSLImp;
@@ -254,7 +255,7 @@ public:
 	bool            StartSSL();
 	bool            IsSSL() const                            { return ssl; }
 	dword           SSLHandshake();
-	void            SSLCertificate(const String& cert, const String& pkey, bool asn1);
+	void            SSLCertificate(const String& cert, const String& pkey, bool asn1, const Vector<String> *certchain=0);
 	void            SSLServerNameIndication(const String& name);
 	const SSLInfo  *GetSSLInfo() const                       { return ~sslinfo; }
 	
@@ -425,6 +426,7 @@ class HttpRequest : public TcpSocket {
 	bool         std_headers;
 	bool         hasurlvar;
 	bool		 keep_alive;
+	bool         reuse;
 	bool         all_content;
 	String       contenttype;
 	String       username;
@@ -559,6 +561,7 @@ public:
 	HttpRequest&  UserAgent(const String& a)              { agent = a; return *this; }
 	HttpRequest&  ContentType(const String& a)            { contenttype = a; return *this; }
 	HttpRequest&  KeepAlive(bool ka = true)               { keep_alive = ka; return *this;}
+	HttpRequest&  Reuse(bool r = true)                    { reuse = r; return *this;}
 
 	HttpRequest&  Proxy(const String& host, int port)            { proxy_host = host; proxy_port = port; return *this; }
 	HttpRequest&  Proxy(const char *p);
@@ -616,6 +619,8 @@ public:
 	void    New();
 	void    NewRequest();
 	void    Clear();
+	void    ReuseDo();
+	void    ReuseDo(const String &url);
 
 	HttpRequest();
 	HttpRequest(const char *url);

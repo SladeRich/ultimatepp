@@ -52,6 +52,7 @@ void HttpRequest::Init()
 	std_headers = true;
 	hasurlvar = false;
 	keep_alive = false;
+	reuse = false;
 	method = METHOD_GET;
 	phase = BEGIN;
 	redirect_count = 0;
@@ -91,7 +92,7 @@ HttpRequest& HttpRequest::Method(int m, const char *custom_name)
 
 HttpRequest& HttpRequest::Url(const char *u)
 {
-	ssl = memcmp(u, "https", 5) == 0;
+	ssl = strnicmp(u, "https", 5) == 0; // Case insensitive for HTTPS
 	const char *t = u;
 	while(*t && *t != '?')
 		if(*t++ == '/' && *t == '/') {
@@ -433,6 +434,17 @@ bool HttpRequest::Do()
 	return phase != FINISHED && phase != FAILED;
 }
 
+void HttpRequest::ReuseDo() {
+	LLOG("HttpRequest reuse for host:"<<host<<" port:"<<port<<" path:"<<path);
+	StartRequest();
+}
+
+void HttpRequest::ReuseDo(const String &url) {
+	LLOG("HttpRequest reuse for "<<url);
+	Url(url);
+	StartRequest();
+}
+
 void HttpRequest::Start()
 {
 	LLOG("HTTP START");
@@ -578,7 +590,7 @@ void HttpRequest::StartRequest()
 	if(std_headers) {
 		data << "URL: " << url << "\r\n"
 		     << "Host: " << (ssl_get_proxy ? phost : host_port) << "\r\n"
-		     << "Connection: " << (keep_alive ? "keep-alive\r\n" : "close\r\n")
+		     << "Connection: " << ((keep_alive || reuse) ? "keep-alive\r\n" : "close\r\n")
 		     << "Accept: " << Nvl(accept, "*/*") << "\r\n"
 		     << "Accept-Encoding: gzip\r\n"
 		     << "User-Agent: " << Nvl(agent, "U++ HTTP request") << "\r\n";
@@ -734,7 +746,7 @@ int64 HttpRequest::GetContentLength()
 
 void HttpRequest::StartBody()
 {
-	LLOG("HTTP Header received: ");
+	LLOG("HTTP Header received: size "<<data.GetCount());
 	LLOG(data);
 	header.Clear();
 	if(!header.Parse(data)) {
@@ -752,6 +764,9 @@ void HttpRequest::StartBody()
 	content_length = count = GetContentLength();
 	has_content_length = HasContentLength();
 	
+	if (content_length>max_content_size) {
+		MaxContentSize(content_length+128); // Ensure all the data will be read, otherwise it will stop after part way through reading the data
+	}
 	
 	if(method == METHOD_HEAD)
 		phase = FINISHED;
@@ -867,11 +882,23 @@ void HttpRequest::Finish()
 	#endif
 	}
 	CopyCookies();
+	LLOG("HttpRequest status_code:"<<status_code);
 	if(status_code == 401 && redirect_count++ < max_redirects && WhenAuthenticate()) {
 		if(keep_alive)
 			StartRequest();
 		else
 			Start();
+		return;
+	}
+	if (reuse && status_code >= 200 && status_code < 300) { // Reuse established connection
+		LLOG("HttpRequest reuse is set");
+		phase = FINISHED;
+		return;
+	}
+	if (status_code == 101) { // Start TLS
+		LLOG("HttpRequest received return code 101 - enabling TLS");
+		SSL();
+		phase = FINISHED;
 		return;
 	}
 	Close();

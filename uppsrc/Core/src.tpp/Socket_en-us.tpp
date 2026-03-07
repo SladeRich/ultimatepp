@@ -337,15 +337,15 @@ SSL handshake is (still) in progress, indicating whether the
 process needs to read or write more bytes from the socket. Returns 
 0 if handshake is finished.&]
 [s3;%% &]
-[s4;%% &]
-[s5;:Socket`:`:SSLCertificate`(const String`&`,const String`&`,bool`): [@(0.0.255) void
-]_[* SSLCertificate]([@(0.0.255) const]_[_^topic`:`/`/Core`/src`/String`$en`-us`#String`:`:class^ S
-tring][@(0.0.255) `&]_[*@3 cert], [@(0.0.255) const]_[_^topic`:`/`/Core`/src`/String`$en`-us`#String`:`:class^ S
-tring][@(0.0.255) `&]_[*@3 pkey], [@(0.0.255) bool]_[*@3 asn1])&]
-[s2;%% Sets the SSL certificate. Must be called before StartSSL. 
-(Note that clients usually do not need certificates, this is 
-usually used on accepting sockets.)&]
-[s3;%% &]
+[s4; &]
+[s5;:Upp`:`:Socket`:`:SSLCertificate`(const String`&`,const String`&`,bool`,const Vector`*`): [@(0.0.255) v
+oid] [* SSLCertificate]([@(0.0.255) const] String[@(0.0.255) `&] [*@3 cert], 
+[@(0.0.255) const] String[@(0.0.255) `&] [*@3 pkey], [@(0.0.255) bool] 
+[*@3 asn1], [@(0.0.255) const] Vector<String> [@(0.0.255) `*][*@3 certchain] 
+[@(0.0.255) `=] [@3 0])&]
+[s2;%% Sets the SSL certificate, with optional certificate chain. 
+Must be called before StartSSL. (Note that clients usually do 
+not need certificates, this is usually used on accepting sockets.)&]
 [s4; &]
 [s5;:Socket`:`:SSLServerNameIndication`(const Upp`:`:String`&`): [@(0.0.255) void]_[* SSL
 ServerNameIndication]([@(0.0.255) const]_[_^Upp`:`:String^ String][@(0.0.255) `&]_[*@3 na

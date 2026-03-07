@@ -361,6 +361,14 @@ live]([@(0.0.255) bool]_[*@3 ka]_`=_[@(0.0.255) true])&]
 [s2;%% If active, `"Connection`" HTTP request field is `"keep`-alive`", 
 otherwise `"close`". Returns `*this.&]
 [s3;%% &]
+[s4; &]
+[s5;:Upp`:`:HttpRequest`:`:Reuse`(bool`): HttpRequest[@(0.0.255) `&] 
+[* Reuse]([@(0.0.255) bool] [*@3 r] [@(0.0.255) `=] [@(0.0.255) true])&]
+[s0;l288;%% If active, reuse established connection&]
+[s2;%% Used to keep connection (particularly slower https secure 
+connection) going to allow multiple large data like images to 
+be downloaded from a site.&]
+[s3; &]
 [s4;%% &]
 [s5;:HttpRequest`:`:Proxy`(const String`&`,int`): [_^HttpRequest^ HttpRequest][@(0.0.255) `&
 ]_[* Proxy]([@(0.0.255) const]_[_^String^ String][@(0.0.255) `&]_[*@3 host], 
@@ -569,6 +577,15 @@ received `- those are send with the new request.&]
 [s2;%% Sets HTTP request to initial default state (same as freshly 
 constructed object) including cookies. Terminates TCP connection 
 to server.&]
+[s3; &]
+[s4; &]
+[s5;:Upp`:`:HttpRequest`:`:ReuseDo`(`): [@(0.0.255) void] [* ReuseDo]()&]
+[s2;%% Call this to reuse connection.&]
+[s3; &]
+[s4; &]
+[s5;:Upp`:`:HttpRequest`:`:ReuseDo`(const String`&`): [@(0.0.255) void] 
+[* ReuseDo]([@(0.0.255) const] String[@(0.0.255) `&] [*@3 url])&]
+[s2;%% Call this to reuse connection with a new [%-*@3 url].&]
 [s3; &]
 [s4;%% &]
 [s5;:HttpRequest`:`:HttpRequest`(`): [* HttpRequest]()&]
