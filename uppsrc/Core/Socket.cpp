@@ -968,7 +968,7 @@ void Socket::SSLCertificate(const String& cert_, const String& pkey_, bool asn1_
 	pkey = pkey_;
 	asn1 = asn1_;
 	if (certchain_)
-		for (int i=0; i<certchain_->GetCount(); i++) certchain.Add((*certchain_)[i]); // Allow for certificate chains - Slade
+		for (int i=0; i<certchain_->GetCount(); i++) certchain.Add((*certchain_)[i]); // Allow for certificate chains
 }
 
 void Socket::SSLServerNameIndication(const String& name)
