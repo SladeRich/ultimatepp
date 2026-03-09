@@ -187,6 +187,10 @@ class RichObject : Moveable<RichObject> {
 	const RichObjectType *type;
 	int64                 serial;
 	String                type_name;
+	String                reference;  // Reference for the object to use when updating after it is displayed
+	bool                  image_type; // Type of image PNG, JPEG, TIFF etc
+	String                name; // Image name
+	String                alt; // Alternate text for image
 
 	static VectorMap<String, RichObjectType *>& Map();
 
@@ -207,11 +211,21 @@ public:
 	Image  ToImage(Size sz, const RichObjectPaintInfo& pi = RichObjectPaintInfo()) const;
 	Size   GetPhysicalSize() const               { return physical_size; }
 	Size   GetPixelSize() const                  { return pixel_size; }
+	void   SetPhysicalSize(Size sz)                { physical_size = sz; }  // Update Rich text object after it is displayed
+	void   SetPixelSize(Size sz)                   { pixel_size = sz; }  // Update Rich text object after it is displayed
 	Size   GetDefaultSize(Size maxsize, void *context = NULL) const { return type ? type->GetDefaultSize(data, maxsize, context) : physical_size; }
 
 	void   Set(RichObjectType *type, const Value& data, Size maxsize = Size(3967, 3967), void *context = NULL);
 	bool   Set(const String& type_name, const Value& data, Size maxsize = Size(3967, 3967), void *context = NULL);
 	void   SetData(const Value& v);
+	void   SetReference(const String &ref)       { reference = ref; }  // Get reference for the object to use when updating after it is displayed
+	String GetReference() const                  { return reference; } // Set reference for the object to use when updating after it is displayed
+	void   SetImageType(bool set)                { image_type = set; }  // Set type of image PNG, JPEG, TIFF etc
+	bool   IsImageType() const                   { return image_type; } // True if this is an image type object ie PNG, JPEG, TIFF etc
+	void   SetName(const String &s)              { name = s; } // Set image name
+	String GetName() const                       { return name; } // Get image name
+	void   SetAlt(const String &s)               { alt = s; } // Set alternate text for image
+	String GetAlt() const                        { return alt; } // Set alternate text for image
 
 	String GetTypeName() const;
 	Value  GetData() const                       { return data; }
@@ -502,6 +516,7 @@ const Display& QTFDisplayVCenter();
 class HtmlObjectSaver
 {
 public:
+	bool hasLink; // Tracks use of links
 	virtual ~HtmlObjectSaver() {}
 	
 	virtual String GetHtml(const RichObject& object)                     { return Null; }
@@ -513,13 +528,14 @@ String EncodeHtml(const RichText& text, Index<String>& css,
                   const VectorMap<String, String>& labels,
                   const String& path, const String& base = Null, Zoom z = Zoom(8, 40),
                   const VectorMap<String, String>& escape = VectorMap<String, String>(),
-                  int imtolerance = 0);
+                  int imtolerance = 0, const char *styleprefix=0); // Added styleprefix);
 String EncodeHtml(const RichText& text, Index<String>& css,
                   const VectorMap<String, String>& links,
                   const VectorMap<String, String>& labels,
                   HtmlObjectSaver& object_saver, Zoom z = Zoom(8, 40),
-                  const VectorMap<String, String>& escape = VectorMap<String, String>());
-String AsCss(Index<String>& ss);
+                  const VectorMap<String, String>& escape = VectorMap<String, String>(),
+                  const char *styleprefix=0); // Added styleprefix
+String AsCss(Index<String>& ss, const char *styleprefix=0); // Added styleprefix
 
 String MakeHtml(const char *title, const String& css, const String& body);
 

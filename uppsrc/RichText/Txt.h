@@ -259,6 +259,7 @@ public:
 		virtual ~Iterator() {}
 	};
 	bool                  Iterate(Iterator& r, int gpos, const RichStyles& s) const;
+	bool                  UpdateObject(int64 rid,const String& type, const Value& data, void *context = NULL); // Update Rich text object after it is displayed
 
 	RichTxt(const RichTxt& src, int);
 	RichTxt();

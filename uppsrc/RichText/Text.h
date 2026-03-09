@@ -117,6 +117,7 @@ public:
 
 	void                  InvalidateAll()                                   { r_type = ALL; }
 	void                  Validate();
+	bool                  UpdateObject(int64 rid,const String& type, const Image& data, void *context); // Update Rich text object after it is displayed
 	bool                  GetInvalid(PageY& top, PageY& bottom, const Rect& page,
 	                                 int sell, int selh, int osell, int oselh) const;
 

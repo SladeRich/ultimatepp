@@ -303,8 +303,15 @@ void RichTxt::GetRichPos(int pos, RichPos& rp, int ti, int maxlevel, const RichS
 				rp.celllen = ct.GetLength();
 				rp.parenttab = pti;
 				rp.table = ti + 1;
-				if(rp.level < maxlevel)
-					ct.GetRichPos(pos, rp, ti + 1 + tab.GetTableCount(rp.cell), maxlevel, st);
+				if (rp.cell.x<tab.GetColumns() && rp.cell.y<tab.GetRows()) { // Prevent malformed tables from crashing
+					const RichTxt& ct = tab[rp.cell].text;
+					rp.celllen = ct.GetLength();
+					if(rp.level < maxlevel) {
+						ct.GetRichPos(pos, rp, ti + 1 + tab.GetTableCount(rp.cell), maxlevel, st);
+					}
+				} else {
+					rp.celllen = 0;
+				}
 				return;
 			}
 			else {
@@ -423,6 +430,67 @@ bool RichTxt::Iterate(Iterator& r, int gpos, const RichStyles& s) const
 	sIter__ it;
 	it.iter = &r;
 	return const_cast<RichTxt *>(this)->Iterate(it, gpos, s);
+}
+
+// Update Rich text object after it is displayed
+bool RichTxt::UpdateObject(int64 rid,const String& type, const Value& data, void *context)
+{
+	for(int pi=part.GetCount(); pi--; ) {
+		if(IsTable(pi)) {
+			RichTable& tab = part[pi].Get<RichTable>();
+			for(int i = 0; i < tab.GetRows(); i++)
+				for(int j = 0; j < tab.GetColumns(); j++)
+					if(tab(i, j)) {
+						if (tab[i][j].text.UpdateObject(rid,type,data,context)) { // Recurse into partitions
+							tab.Invalidate();
+							return true; // Found so it is now done
+						}
+					}
+		}
+		else if(part[pi].Is<Para>()) {
+			Para& pp = part[pi].Get<Para>();
+			for(int j=pp.object.GetCount(); j--; ) {
+				RichObject &o = pp.object[j];
+				if (o.GetSerialId()==rid) {
+					// Keep original size
+					Size osz = o.GetSize();
+					Size sz = o.GetPixelSize();
+					o.Set(type,data,sz,context);
+					if (sz.cx<=0 || sz.cy<=0) {
+						Size isz;/// = img.GetSize();
+						isz = ((Image)data).GetSize();
+						int x = isz.cx;
+						int y = isz.cy;
+						if (sz.cx<=0 && sz.cy<=0) {
+							if (osz.cx>0 && osz.cy>0) {
+								sz = osz;
+							} else {
+								sz.cx = x*600/97; // Screen use 96 DPI and printers 600 DPI - to compensate for rounding error use ratio of 97:600
+								sz.cy = y*600/97; // Screen use 96 DPI and printers 600 DPI - to compensate for rounding error use ratio of 97:600
+							}
+						} else {
+							if (sz.cx>0) {
+								if (x>0) sz.cy = y*sz.cx/x;
+							} else {
+								if (y>0) sz.cx = x*sz.cy/y;
+							}
+						}
+						o.SetSize(sz);
+						Size psz(x,y);
+						o.SetPhysicalSize(psz);
+						o.SetPixelSize(psz);
+					}
+					if (pp.cy<o.GetSize().cy) pp.cy = o.GetSize().cy; // Adjust the line size if it needs to be made bigger
+					pp.checked = false;
+					pp.Invalidate();
+					SetRefresh(pi);
+					RefreshAll();
+					return true;
+				}
+			}
+		}
+	}
+	return false;
 }
 
 void RichTxt::Init()

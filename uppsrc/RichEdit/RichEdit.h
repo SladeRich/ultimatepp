@@ -510,8 +510,10 @@ private:
 	void       FixObjectRect();
 	bool       RemoveBullet(bool backspace);
 
+	void       EditObject(); // Updating objects
 	void       SetObjectPos(int pos);
 	void       AdjustObjectSize();
+	void       AdjustObjectProperties(); // Adjust objects properties
 	void       SetObjectPercent(int p);
 	void       SetObjectYDelta(int pt);
 	void       SetFace();
@@ -713,6 +715,7 @@ public:
 	Event<>                  WhenSel;
 	Gate<const String&>      WhenIsLink;
 	Event<const String&>     WhenLink;
+	Gate2<RichObject&,bool>  WhenEditObject; // Call back when the object has been updated
 
 	void   StdBar(Bar& menu);
 
@@ -847,6 +850,7 @@ public:
 	Size            GetPage()                              { return pagesz; }
 	bool            IsDarkContent() const;
 	void            SetupDark(ColorPusher& c) const;
+	bool            UpdateObject(int64 rid,const String& type, const Value& data, void *context = NULL) {return text.UpdateObject(rid,type,data,context); } // Update Rich text object after it is displayed
 
 	RichEdit&       NoRuler()                              { RemoveFrame(ruler); return *this; }
 	RichEdit&       SingleLine(bool b = true)              { singleline = b; return *this; }

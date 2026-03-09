@@ -159,6 +159,13 @@ int RichText::GetHeight(int cx) const
 	return GetHeight(Size(cx, 0xFFFFFFF)).y;
 }
 
+// Update Rich text object after it is displayed
+bool RichText::UpdateObject(int64 rid,const String& type, const Image& data, void *context)
+{
+	bool updated = RichTxt::UpdateObject(rid,type,data,context);
+	return updated;
+}
+
 void RichText::Paint(Draw& w, int x, int y, int cx, const PaintInfo& pinit) const
 {
 	Mutex::Lock __(mutex);

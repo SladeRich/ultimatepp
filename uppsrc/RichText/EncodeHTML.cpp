@@ -7,16 +7,18 @@ String HtmlFontStyle(Font f, Font base)
 	String style;
 	if(f.GetFace() != base.GetFace())
 		switch(f.GetFace()) {
-		case Font::ARIAL: style = "font-family:sans-serif;"; break;
-		case Font::ROMAN: style = "font-family:serif;"; break;
-		case Font::COURIER: style = "font-family:monospace;"; break;
+		case Font::ARIAL: style = "font-family:Arial,Helvetica,sans-serif;"; break;
+		case Font::ROMAN: style = "font-family:Times New Roman,Times,Roman,serif;"; break;
+		case Font::COURIER: style = "font-family:courier,monospace;"; break;
 		}
 	if(f.GetHeight() != base.GetHeight())
-		style << Sprintf("font-size:%dpt;", f.GetHeight() * 72 / 600);
+		style << "font-size:" << Sprintf("%.1f",(f.GetHeight() * 72.0 + 30.0) / 600.0)  << "pt;";
 	if(f.IsBold() != base.IsBold())
-		style << (f.IsBold() ? "font-weight:bold;" : "font-weight:normal;");
+		style << "font-weight:" << (f.IsBold() ? "bold" : "normal") << ';';
 	if(f.IsItalic() != base.IsItalic())
-		style << (f.IsItalic() ? "font-style:italic;" : "font-style:normal;");
+		style << "font-style:" << (f.IsItalic() ? "italic" : "normal") << ';';
+	if(f.IsUnderline() != base.IsUnderline())
+		style << "text-decoration:" << (f.IsUnderline() ? "underline" : "none") << ';';
 	return style;
 }
 
@@ -24,13 +26,14 @@ String HtmlFontStyle(Font f)
 {
 	String style;
 	switch(f.GetFace()) {
-		case Font::ARIAL: style = "font-family:sans-serif;"; break;
-		case Font::ROMAN: style = "font-family:serif;"; break;
-		case Font::COURIER: style = "font-family:monospace;"; break;
+		case Font::ARIAL: style = "font-family:Arial,Helvetica,sans-serif;"; break;
+		case Font::ROMAN: style = "font-family:Times New Roman,Times,Roman,serif;"; break;
+		case Font::COURIER: style = "font-family:courier,monospace;"; break;
 	}
-	style << Sprintf("font-size:%dpt;", f.GetHeight() * 72 / 600);
-	style << (f.IsBold() ? "font-weight:bold;" : "font-weight:normal;");
-	style << (f.IsItalic() ? "font-style:italic;" : "font-style:normal;");
+	style << "font-size:" << Sprintf("%.1f",(f.GetHeight() * 72.0 + 30.0) / 600.0)  << "pt;";
+	style << "font-weight:" << (f.IsBold() ? "bold" : "normal") << ';';
+	style << "font-style:" << (f.IsItalic() ? "italic" : "normal") << ';';
+	style << "text-decoration:" << (f.IsUnderline() ? "underline" : "none") << ';';
 	return style;
 }
 
@@ -54,29 +57,40 @@ String HtmlCharStyle(const RichPara::CharFormat& cf, const RichPara::CharFormat&
 	String style;
 	if(cf.ink != sf.ink)
 		style = HtmlStyleColor(cf.ink);
+	if(cf.paper != sf.paper)
+		style += HtmlStyleColor(cf.paper, "background-color");
 	return style + HtmlFontStyle(cf, sf);
 }
 
 String HtmlParaStyle(const RichPara::Format& f, Zoom z)
 {
 	String style;
-	int lm = z * f.lm;
-	if(f.bullet && f.bullet != RichPara::BULLET_TEXT) {
-		style << "display:list-item;list-style-type:";
+	int lm = (f.lm * 72 + 300) / 600; // Convert to pt
+	if((f.bullet && f.bullet != RichPara::BULLET_TEXT) || f.number[0]) {
+		style << "display:list-item;line-style-type:";
 		switch(f.bullet) {
 		case RichPara::BULLET_ROUND: style << "disc"; break;
 		case RichPara::BULLET_ROUNDWHITE: style << "circle"; break;
 		case RichPara::BULLET_BOX:
 		case RichPara::BULLET_BOXWHITE: style << "square"; break;
+		default:
+			switch(f.number[0]) {
+			case RichPara::NUMBER_1: style << "decimal"; break;
+			case RichPara::NUMBER_0: style << "decimal-leading-zero"; break;
+			case RichPara::NUMBER_a: style << "lower-alpha"; break;
+			case RichPara::NUMBER_A: style << "upper-alpha"; break;
+			case RichPara::NUMBER_i: style << "lower-roman"; break;
+			case RichPara::NUMBER_I: style << "upper-roman"; break;
+			default: style << "disc"; break;
+			}
 		}
-		style << ';';
-//		style << ";list-style-position:inside;";
+		style << ";line-style-position:inside;";
 		lm += 20;
 	}
-	style << Format("margin:%d`px %d`px %d`px %d`px;text-indent:%d`px;",
-	                z * f.before,
-	                z * f.rm,
-	                z * f.after,
+	style << Format("margin:%d %d %d %d;text-indent:%d;",
+	                (f.before * 72 + 300) / 600, // Convert to pt
+	                (f.rm * 72 + 300) / 600, // Convert to pt
+	                (f.after * 72 + 300) / 600, // Convert to pt
 	                lm,
 	                z * (f.bullet ? 0 : f.indent)
 	         );
@@ -97,9 +111,11 @@ String HtmlParaStyle(const RichPara::Format& f, Zoom z)
 	return style;
 }
 
-String FormatClass(Index<String>& css, const String& fmt)
+String FormatClass(Index<String>& css, const String& fmt, const char *styleprefix) // Added styleprefix
 {
-	return " class=\"" + FormatIntAlpha(css.FindAdd(fmt) + 1) + "\"";
+	String  s;
+	s << " class=\"" << (styleprefix?styleprefix:"") << FormatIntAlpha(css.FindAdd(fmt) + 1) << "\"";
+	return s;
 }
 
 void TabBorder(String& style, const char *txt, int border, Color bordercolor, const RichTable::Format& tf, Zoom z)
@@ -108,15 +124,40 @@ void TabBorder(String& style, const char *txt, int border, Color bordercolor, co
 	      << ColorToHtml(border ? bordercolor : tf.gridcolor) << ';';
 }
 
+String FormatLink(const VectorMap<String, String>& links,String lnk,String *endLinkTag)
+{
+	String html;
+	if(lnk.GetCount()) {
+		int q = links.Find(lnk);
+		if(q < 0) {
+			int q = lnk.ReverseFind('#');
+			if(q >= 0) {
+				String l = lnk.Left(q);
+				lnk = links.Get(l, l) + '#' + lnk.Mid(q + 1);
+			}
+		} else {
+			lnk = links[q];
+		}
+		if(lnk[0] != ':') {
+			html << "<a href=\"" << lnk << "\">";
+			*endLinkTag = "</a>";
+		}
+	}
+	return html;
+}
+
 String AsHtml(const RichTxt& text, const RichStyles& styles, Index<String>& css,
               const VectorMap<String, String>& links,
               const VectorMap<String, String>& labels,
               Zoom z, const VectorMap<String, String>& escape,
               HtmlObjectSaver& object_saver,
+              const char *styleprefix,
               RichPara::Number& n)
 {
 	String html;
-	for(int i = 0; i < text.GetPartCount(); i++) {
+	int currentLanguage = 0;
+	for(int i = 0; i < text.GetPartCount(); i++)
+	{
 		if(text.IsTable(i)) {
 			const RichTable& t = text.GetTable(i);
 			const RichTable::Format& tf = t.GetFormat();
@@ -134,7 +175,7 @@ String AsHtml(const RichTxt& text, const RichStyles& styles, Index<String>& css,
 			style << "border-collapse:collapse;table-layout:auto;"
 			      << "border:" << HtmlDotl(tf.frame, z) << " solid " << ColorToHtml(tf.framecolor) << ';';
 
-			html << "<table width=\"100%\"" << FormatClass(css, style) << ">";
+			html << "\r\n\t<table width=\"100%\"" << FormatClass(css, style, styleprefix) << " style=\"margin:" << HtmlDot(tf.before, z) << HtmlDot(tf.rm, z) << HtmlDot(tf.after, z) << HtmlDot(tf.lm, z) << "\">";
 			int sum = 0;
 			for(int i = 0; i < nx; i++)
 				sum += tf.column[i];
@@ -145,7 +186,7 @@ String AsHtml(const RichTxt& text, const RichStyles& styles, Index<String>& css,
 			html << "\r\n";
 			for(int i = 0; i < ny; i++) {
 				const Array<RichCell>& r = t[i];
-				html << "<tr>";
+				html << "\r\n\t\t<tr>";
 				for(int j = 0; j < r.GetCount(); j++) {
 					if(t(i, j)) {
 						const RichCell& c = r[j];
@@ -165,17 +206,18 @@ String AsHtml(const RichTxt& text, const RichStyles& styles, Index<String>& css,
 						case ALIGN_BOTTOM: style << "bottom"; break;
 						}
 						style << ';';
-						html << "<td" << FormatClass(css, style);
+						if (!cf.backgroundimage.IsEmpty()) style << "background-image:url(\"" << cf.backgroundimage << "\");";
+						html << "\r\n\t\t\t<td" << FormatClass(css, style, styleprefix);
 						if(c.hspan)
 							html << " colspan=" << c.hspan + 1;
 						if(c.vspan)
 							html << " rowspan=" << c.vspan + 1;
 						html << '>';
-						html << AsHtml(c.text, styles, css, links, labels, z, escape, object_saver, n);
-						html << "</td>\r\n";
+						html << AsHtml(c.text, styles, css, links, labels, z, escape, object_saver, styleprefix, n);
+						html << "\r\n\t\t\t</td>";
 					}
 				}
-				html << "</tr>\r\n";
+				html << "\r\n\t\t</tr>";
 			}
 			html << "</table></td>\r\n";
 			if (tf.rm > 0)
@@ -189,6 +231,12 @@ String AsHtml(const RichTxt& text, const RichStyles& styles, Index<String>& css,
 			RichPara p = text.Get(i, styles);
 			if(p.format.ruler)
 				html << "<hr>";
+			String lbl;
+			if(!IsNull(p.format.label)) {
+				lbl = labels.Get(p.format.label, Null);
+				if(lbl.GetCount())
+					html << "<a name=\"" << lbl << "\">";
+			}
 			bool bultext = false;
 			String number;
 			if(p.format.GetNumberLevel() > 0) {
@@ -205,7 +253,7 @@ String AsHtml(const RichTxt& text, const RichStyles& styles, Index<String>& css,
 					}
 				}
 			if(bultext) {
-				html << "<table width=\"100%\" border=\"0\" "
+				html << "\r\n\t<table width=\"100%\" border=\"0\" "
 				        "cellpadding=\"2\" cellspacing=\"2\">"
 				        "<tr>";
 				int q = z * p.format.lm - 8;
@@ -216,10 +264,10 @@ String AsHtml(const RichTxt& text, const RichStyles& styles, Index<String>& css,
 				p.format.ruler = p.format.after = p.format.before = p.format.indent = p.format.lm = 0;
 			}
 			String par = "<p";
-			String lbl = labels.Get(p.format.label, p.format.label);
+			lbl = labels.Get(p.format.label, p.format.label);
 			if(lbl.GetCount())
 				par << " id=\"" << lbl << "\"";
-			par << FormatClass(css, HtmlParaStyle(p.format, z)) << ">";
+			par << FormatClass(css, HtmlParaStyle(p.format, z), styleprefix) << ">";
 			html << par;
 			for(int i = 0; i < p.part.GetCount(); i++) {
 				const RichPara::Part& part = p.part[i];
@@ -237,11 +285,14 @@ String AsHtml(const RichTxt& text, const RichStyles& styles, Index<String>& css,
 					else
 						lnk = links[q];
 				}
-				if(part.object)
+				if(part.object) {
+					String endtag;
+					html << FormatLink(links,part.format.link,&endtag);
+					object_saver.hasLink = !endtag.IsEmpty();
 					html << object_saver.GetHtml(part.object, lnk);
-				else
-				if(part.format.indexentry.GetCount() &&
-				   (q = escape.Find(part.format.indexentry.ToString())) >= 0)
+					html << endtag;
+				}
+				else if(part.format.indexentry.GetCount() && (q = escape.Find(part.format.indexentry.ToString())) >= 0)
 					html << escape[q];
 				else {
 					String endtag;
@@ -250,9 +301,10 @@ String AsHtml(const RichTxt& text, const RichStyles& styles, Index<String>& css,
 						endtag = "</a>";
 					}
 					String cs;
-					cs = HtmlCharStyle(part.format, p.format);
+					if(part.text[0] != 9)
+						cs = HtmlCharStyle(part.format, p.format);
 					if(!cs.IsEmpty()) {
-						html << "<span" << FormatClass(css, cs) << ">";
+						html << "<span" << FormatClass(css, cs, styleprefix) << ">";
 						endtag = "</span>" + endtag;
 					}
 					if(part.format.sscript == 1) {
@@ -275,7 +327,7 @@ String AsHtml(const RichTxt& text, const RichStyles& styles, Index<String>& css,
 						html << "<span style=\"font-variant: small-caps;\">";
 						endtag << "</span>";
 					}
-					bool spc = false;
+					bool spc = true;
 					const wchar *end = part.text.End();
 					const wchar *s = part.text.Begin();
 					WString h;
@@ -313,7 +365,7 @@ String AsHtml(const RichTxt& text, const RichStyles& styles, Index<String>& css,
 									if(s[1]) {
 										cs = HtmlCharStyle(part.format, p.format);
 										if(!cs.IsEmpty())
-											html << "<span" << FormatClass(css, cs) << ">";
+											html << "<span" << FormatClass(css, cs, styleprefix) << ">";
 									}
 								}
 								else
@@ -328,10 +380,11 @@ String AsHtml(const RichTxt& text, const RichStyles& styles, Index<String>& css,
 			}
 			if(p.part.GetCount() == 0)
 				html << "&nbsp;";
-			html << "</p>";
+			html << "\r\n\t\t\t\t</p>";
 			if(bultext)
-				html << "</td></tr></table>";
-			html << "\r\n";
+				html << "\t</td></tr></table>";
+			if(lbl.GetCount())
+				html << "</a>";
 		}
 	}
 	return html;
@@ -357,21 +410,34 @@ String DefaultHtmlObjectSaver::GetHtml(const RichObject& object, const String& l
 {
 	StringBuffer html;
 	String name;
-	name << namebase << "_" << im++ << ".png";
+	name = object.GetName();
+	if (name.IsEmpty())
+		name << namebase << "_" << im++ << ".png";
 	Size psz = object.GetPixelSize();
+	String lname;
+	lname << "L$" << name;
 	Size sz = z * object.GetSize();
 	if(abs(100 * (psz.cx - sz.cx) / sz.cx) < imtolerance)
 		sz = psz;
 	PNGEncoder png;
-	RichObjectPaintInfo pi;
-	pi.ink = SBlack();
-	png.SaveFile(AppendFileName(outdir, name), object.ToImage(psz, pi));
+	png.SaveFile(AppendFileName(outdir, name), object.ToImage(sz));
+	bool largeImg = !hasLink && psz.cx * psz.cy;
+	if (largeImg)
+		html << "<a href=\"" << lname << "\">";
+	html << "<img src=\"" << name << "\" border=\"0\"" << (object.GetAlt().IsEmpty()?"":Format(" alt=\"%s\"",~object.GetAlt())) << ">";
 	String el = "</a>";
-	if(IsNull(link)) {
-		if(psz.cx * psz.cy != 0)
-			html << "<a href=\"" << name << "\">";
-		else
-			el.Clear();
+	if(largeImg) {
+		html << "</a>";
+		PNGEncoder png;
+		RichObjectPaintInfo pi;
+		pi.ink = SBlack();
+		png.SaveFile(AppendFileName(outdir, lname), object.ToImage(psz, pi));
+		if(IsNull(link)) {
+			if(psz.cx * psz.cy != 0)
+				html << "<a href=\"" << name << "\">";
+			else
+				el.Clear();
+		}
 	}
 	else
 		html << "<a href=\"" << link << "\">";
@@ -385,28 +451,30 @@ String EncodeHtml(const RichText& text, Index<String>& css,
                   const VectorMap<String, String>& links,
                   const VectorMap<String, String>& labels,
                   const String& outdir, const String& namebase, Zoom z,
-                  const VectorMap<String, String>& escape, int imt)
+                  const VectorMap<String, String>& escape, int imt,
+                  const char *styleprefix)
 {
 	RichPara::Number n;
 	DefaultHtmlObjectSaver default_saver(outdir, namebase, imt, z);
-	return AsHtml(text, text.GetStyles(), css, links, labels, z, escape, default_saver, n);
+	return AsHtml(text, text.GetStyles(), css, links, labels, z, escape, default_saver, styleprefix, n);
 }
 
 String EncodeHtml(const RichText& text, Index<String>& css,
                   const VectorMap<String, String>& links,
                   const VectorMap<String, String>& labels,
                   HtmlObjectSaver& object_saver, Zoom z,
-                  const VectorMap<String, String>& escape)
+                  const VectorMap<String, String>& escape,
+                  const char *styleprefix)
 {
 	RichPara::Number n;
-	return AsHtml(text, text.GetStyles(), css, links, labels, z, escape, object_saver, n);
+	return AsHtml(text, text.GetStyles(), css, links, labels, z, escape, object_saver, styleprefix, n);
 }
 
-String AsCss(Index<String>& ss)
+String AsCss(Index<String>& ss,const char *styleprefix)
 {
 	String css;
 	for(int i = 0; i < ss.GetCount(); i++) {
-		css << "." + FormatIntAlpha(i + 1);
+		css << "."  << (styleprefix?styleprefix:"") << FormatIntAlpha(i + 1);
 		css << "{" << ss[i] << "}\r\n";
 	}
 	return css;

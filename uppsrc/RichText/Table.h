@@ -9,6 +9,7 @@ public:
 		Color    bordercolor;
 		bool     keep;
 		bool     round;
+		String   backgroundimage; // Add back ground image to cell
 
 		Format();
 	};
@@ -74,9 +75,9 @@ public:
 		CellInfo()            { valid = true; }
 	};
 
-private:
 	Format format;
 	Array< Array<RichCell> > cell;
+private:
 	mutable One<RichText> header, footer;
 
 	struct PaintCell : Moveable<PaintCell> {
