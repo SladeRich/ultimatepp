@@ -72,7 +72,7 @@ bool CpuMMX()        { sCheckCPU(); return sHasMMX; }
 bool CpuSSE()        { sCheckCPU(); return sHasSSE; }
 bool CpuSSE2()       { sCheckCPU(); return sHasSSE2; }
 bool CpuSSE3()       { sCheckCPU(); return sHasSSE3; }
-bool CpuAES()        { sCheckCPU(); return sHasAES; } // Added AES capable - Slade
+bool CpuAES()        { sCheckCPU(); return sHasAES; }
 bool CpuAVX()        { sCheckCPU(); return sHasAVX; }
 bool CpuHypervisor() { sCheckCPU(); return sHypervisor; }
 
