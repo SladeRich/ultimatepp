@@ -645,7 +645,9 @@ private:
 	Image   MouseEventH(int event, Point p, int zdelta, dword keyflags);
 	Image   FrameMouseEventH(int event, Point p, int zdelta, dword keyflags);
 	Image   MEvent0(int e, Point p, int zd);
-	Image   DispatchMouse(int e, Point p, int zd = 0);
+public:
+	Image   DispatchMouse(int e, Point p, int zd = 0); // Public access for use by test code
+private:
 	Image   DispatchMouseEvent(int e, Point p, int zd = 0);
 	void    LogMouseEvent(const char *f, const Ctrl *ctrl, int event, Point p, int zdelta, dword keyflags);
 
@@ -657,7 +659,9 @@ private:
 	void    RefreshAccessKeys();
 	void    RefreshAccessKeysDo(bool vis);
 	static  void  DefferedFocusSync();
-	static  bool  DispatchKey(dword keycode, int count);
+public:
+	static  bool  DispatchKey(dword keycode, int count); // Public access for use by test code
+private:
 	void    SetFocusWnd();
 	void    KillFocusWnd();
 

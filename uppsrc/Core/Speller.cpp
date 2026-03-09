@@ -155,7 +155,7 @@ Speller *sGetSpeller(int lang)
 #ifdef PLATFORM_POSIX
 		pp << "/usr/local/share/upp/speller;/usr/local/share/upp;/usr/share/upp/speller;/usr/share/upp";
 #endif
-		String path = GetFileOnPath(ToLower(LNGAsText(lang)) + ".udc", pp);
+		String path = GetFileOnPath(ToLower(LNGAsText(lang&0xfffff)) + ".udc", pp); // Ensure code page is not used when looking for language spelling file
 		if(IsNull(path))
 			return NULL;
 		FileIn in(path);

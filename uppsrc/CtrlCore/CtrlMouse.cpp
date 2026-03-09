@@ -1,5 +1,7 @@
 #include "CtrlCore.h"
 
+bool (*MouseSimulated)() = 0; // Allow for text validation for testing - Slade
+
 namespace Upp {
 
 #define LLOG(x)  // DLOG(x)
@@ -624,7 +626,7 @@ Image Ctrl::DispatchMouse(int e, Point p, int zd) {
 	if(findarg(e, LEFTUP, RIGHTUP, MIDDLEUP) >= 0)
 		KillRepeat();
 	Image result = DispatchMouseEvent(e, p, zd);
-	if(!GetMouseRight() && !GetMouseMiddle() && !GetMouseLeft())
+	if(!GetMouseRight() && !GetMouseMiddle() && !GetMouseLeft() && (!MouseSimulated || !MouseSimulated())) // Allow for testing text validation
 		ReleaseCtrlCapture();
 	return result;
 }
