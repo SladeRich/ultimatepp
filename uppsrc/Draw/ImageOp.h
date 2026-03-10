@@ -191,6 +191,7 @@ Image AdjustImage(const Image& image, Image (*make)(const Image& image));
 void SweepMkImageCache(); // deprecated, use AdjustValueCache();
 void SetMakeImageCacheMax(int m); // deprecated, use SetupValueCache
 void SetMakeImageCacheSize(int m); // deprecated, use SetupValueCache
+void ClearMakeImageCache();
 
 Image MakeImagePaintOnly(const ImageMaker& m);
 
