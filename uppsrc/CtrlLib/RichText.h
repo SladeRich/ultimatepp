@@ -74,6 +74,8 @@ public:
 	int             GetCy() const;
 	int             GetHeight() const /* obsolete */          { return GetHeight(GetSize().cx); }
 
+	bool            UpdateObject(int64 rid,const String& type, const Image& data, void *context = NULL); // Update Rich text object after it is displayed
+
 	int             GetSb() const                             { return sb; }
 	void            SetSb(int i)                              { sb = i; }
 	void            ScrollInto(int pos)                       { sb.ScrollInto(pos); }

@@ -73,6 +73,15 @@ void  RichTextView::Paint(Draw& w)
 	w.End();
 }
 
+// Update Rich text object after it is displayed
+bool RichTextView::UpdateObject(int64 rid,const String& type, const Image& data, void *context)
+{
+	bool ok = text.UpdateObject(rid,type,data,context);
+	SetSb();
+	Refresh();
+	return ok;
+}
+
 void  RichTextView::SetSb()
 {
 	sb.SetTotal(text.GetHeight(GetPage()).y);
