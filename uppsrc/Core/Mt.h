@@ -169,6 +169,7 @@ public:
 
 	Mutex()                      { InitializeCriticalSection(&section); }
 #endif
+	int IsOwned()                { return (int)(long long)section.OwningThread; }
 
 	~Mutex()                     { DeleteCriticalSection(&section); }
 
@@ -241,6 +242,7 @@ public:
 	void  Enter()             { pthread_mutex_lock(mutex); }
 #endif
 	void  Leave()             { pthread_mutex_unlock(mutex); }
+	int IsOwned()             { if (TryEnter()) {Leave(); return 1;} else return 0; }
 
 	class Lock;
 
