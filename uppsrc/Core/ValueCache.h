@@ -11,6 +11,7 @@ bool IsValueCacheActive();
 
 void AdjustValueCache();
 void ShrinkValueCache();
+void ClearValueCache();
 
 void SetupValueCache(int maxsize, int maxcount);
 

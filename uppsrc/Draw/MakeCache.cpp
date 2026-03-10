@@ -61,6 +61,11 @@ void SysImageReleased(const Image& img)
 	}
 }
 
+void ClearMakeImageCache()
+{
+	ClearValueCache();
+}
+
 void SetMakeImageCacheMax(int m)
 {
 	SetupValueCache(m, m / 1000);

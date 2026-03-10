@@ -71,6 +71,10 @@ CtrlCore (U`+`+ GUI) normally calls this function after processing
 every GUI event.&]
 [s3;%- &]
 [s4;%- &]
+[s5;:Upp`:`:ClearValueCache`(`):%- [@(0.0.255) void] [* ClearValueCache]()&]
+[s2; Clears cache, can be called when data is no longer required&]
+[s3;%- &]
+[s4;%- &]
 [s5;:Upp`:`:ShrinkValueCache`(`):%- [@(0.0.255) void]_[* ShrinkValueCache]()&]
 [s2; Maintains the size of cache based on limit computed in the last 
 AdjustValueCache call or setup with SetupValueCache.&]
