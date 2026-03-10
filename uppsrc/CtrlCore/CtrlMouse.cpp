@@ -1,6 +1,6 @@
 #include "CtrlCore.h"
 
-bool (*MouseSimulated)() = 0; // Allow for text validation for testing - Slade
+bool (*MouseSimulated)() = 0; // Allow for text validation for testing
 
 namespace Upp {
 
