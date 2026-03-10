@@ -774,6 +774,7 @@ private:
 
 
 	static void InitTimer();
+	friend class TurtleServer; // Made friend for access to InitTimer to start and stop a web session for multiserver applications
 
 	static String appname;
 
