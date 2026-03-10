@@ -42,6 +42,13 @@ void AdjustValueCache()
 	ShrinkValueCache();
 }
 
+void ClearValueCache()
+{
+	Mutex::Lock __(ValueCacheMutex);
+	TheValueCache().Clear();
+	LLOG("MakeValue cache size after shrink: " << TheValueCache().GetSize());
+}
+
 void ShrinkValueCache()
 {
 	Mutex::Lock __(ValueCacheMutex);
