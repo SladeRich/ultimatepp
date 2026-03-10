@@ -94,6 +94,7 @@ public:
 	bool            IsTabbed() const;
 	bool            IsHidden() const;
 	int             GetDockAlign() const;
+	void            ShowTab() const;
 	
 	void            Highlight();
 	void            TimedHighlight(int ms);

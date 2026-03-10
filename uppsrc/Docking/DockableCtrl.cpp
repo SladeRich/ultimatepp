@@ -81,6 +81,14 @@ int DockableCtrl::GetDockAlign() const
 	return c ? c->GetDockAlign() : -1;
 }
 
+void DockableCtrl::ShowTab() const
+{
+	DockCont *c = GetContainer();
+	if (c) {
+		c->SetCursor((Ctrl&)*this);
+	}
+}
+
 DockableCtrl&  DockableCtrl::SetGroup(const String& g)
 {
 	DockCont *c = GetContainer();
