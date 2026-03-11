@@ -1,5 +1,7 @@
 #include "Draw.h"
 
+void (*ValidateText)(const unsigned short *s,int len) = 0; // Allow for text validation for testing
+
 namespace Upp {
 
 #define LLOG(x)    // LOG(x)
@@ -28,6 +30,7 @@ WString TextUnicode(const char *s, int n, byte cs, Font font)
 void Draw::DrawText(int x, int y, int angle, const wchar *text, Font font,
 		            Color ink, int n, const int *dx)
 {
+	if (ValidateText) (*ValidateText)((const unsigned short*)text,n); // Allow for text validation for testing
 	if(IsNull(ink)) return;
 	ink = ResolveInk(ink);
 	if(n < 0)
