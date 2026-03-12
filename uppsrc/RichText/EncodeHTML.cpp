@@ -183,7 +183,6 @@ String AsHtml(const RichTxt& text, const RichStyles& styles, Index<String>& css,
 			for(int i = 0; i < nx; i++)
 				html << "<col width=\"" << 100 * tf.column[i] / sum << "%\">";
 			html << "</colgroup>";
-			html << "\r\n";
 			for(int i = 0; i < ny; i++) {
 				const Array<RichCell>& r = t[i];
 				html << "\r\n\t\t<tr>";
@@ -219,7 +218,7 @@ String AsHtml(const RichTxt& text, const RichStyles& styles, Index<String>& css,
 				}
 				html << "\r\n\t\t</tr>";
 			}
-			html << "</table></td>\r\n";
+			html << "\r\n\t</table>\r\n</td>";
 			if (tf.rm > 0)
 				html << "<td><table border=\"0\" width=" << HtmlDot(tf.rm, z) << "><tr><td></td></tr></table></td>";
 			if(tf.after > 0)
@@ -296,10 +295,7 @@ String AsHtml(const RichTxt& text, const RichStyles& styles, Index<String>& css,
 					html << escape[q];
 				else {
 					String endtag;
-					if(!lnk.IsEmpty() && lnk[0] != ':') {
-						html << "<a href=\"" << lnk << "\">";
-						endtag = "</a>";
-					}
+					html << FormatLink(links,part.format.link,&endtag);
 					String cs;
 					if(part.text[0] != 9)
 						cs = HtmlCharStyle(part.format, p.format);
