@@ -263,12 +263,12 @@ String AsHtml(const RichTxt& text, const RichStyles& styles, Index<String>& css,
 				               max(z * p.format.indent, 0));
 				p.format.ruler = p.format.after = p.format.before = p.format.indent = p.format.lm = 0;
 			}
-			String par = "<p";
+			String par = "\r\n\t\t\t\t<p";
 			lbl = labels.Get(p.format.label, p.format.label);
 			if(lbl.GetCount())
 				par << " id=\"" << lbl << "\"";
-			par << FormatClass(css, HtmlParaStyle(p.format, z), styleprefix) << ">";
-			html << par;
+			par << FormatClass(css, HtmlParaStyle(p.format, z), styleprefix) << ((p.format.language!=currentLanguage)?(" lang=\""+LNGAsText(currentLanguage=p.format.language)+"\""):"") << ">";
+			html << par << "\r\n\t\t\t\t\t";
 			for(int i = 0; i < p.part.GetCount(); i++) {
 				const RichPara::Part& part = p.part[i];
 				int q;
