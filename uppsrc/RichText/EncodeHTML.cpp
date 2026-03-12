@@ -435,11 +435,6 @@ String DefaultHtmlObjectSaver::GetHtml(const RichObject& object, const String& l
 				el.Clear();
 		}
 	}
-	else
-		html << "<a href=\"" << link << "\">";
-	html << Format("<img src=\"%s\" border=\"0\" alt=\"\" style=\"width: %d`px; height: %d`px\">",
-	               name, sz.cx, sz.cy);
-	html << el;
 	return String(html);
 }
 
