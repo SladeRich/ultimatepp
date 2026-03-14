@@ -8,6 +8,7 @@ uint64 cmask16__(uint16x8_t mask) {
 }
 
 // force_inline uint64 cmask16__(uint16x8_t mask) { return vreinterpretq_s16_u16(mask); }
+force_inline uint64 cmask16__(int16x8_t mask) {return cmask16__((uint16x8_t)mask);}
 
 const uint64 cmask_all__ = 0xffffffffffffffffull;
 
@@ -188,6 +189,7 @@ force_inline i32x4  operator<(i32x4 a, i32x4 b)   { return vreinterpretq_s32_u32
 force_inline i32x4  operator>(i32x4 a, i32x4 b)   { return vreinterpretq_s32_u32(vcgtq_s32(a, b)); }
 
 force_inline uint64 cmask32__(uint32x4_t mask)      { return cmask16__(vreinterpretq_u16_u32(mask)); }
+force_inline uint64 cmask32__(int32x4_t mask)       { return cmask32__((uint32x4_t)mask); }
 force_inline bool   AllTrue(i32x4 a)                { return cmask32__(a.data) == cmask_all__; }
 force_inline bool   AnyTrue(i32x4 a)                { return cmask32__(a.data); }
 force_inline int    CountTrue(i32x4 a)              { return CountBits64(cmask32__(a.data)) >> 4; }
@@ -246,6 +248,7 @@ force_inline i8x16  operator<(i8x16 a, i8x16 b)    { return vreinterpretq_s8_u8(
 force_inline i8x16  operator>(i8x16 a, i8x16 b)    { return vreinterpretq_s8_u8(vcgtq_s8(a, b)); }
 
 force_inline uint64 cmask8__(uint8x16_t mask)      { return cmask16__(vreinterpretq_u16_u8(mask)); }
+force_inline uint64 cmask8__(int8x16_t mask)       { return cmask8__((uint8x16_t)mask); }
 force_inline bool   AllTrue(i8x16 a)               { return cmask8__(a.data) == cmask_all__; }
 force_inline bool   AnyTrue(i8x16 a)               { return cmask8__(a.data); }
 force_inline int    CountTrue(i8x16 a)             { return CountBits64(cmask8__(a.data)) >> 2; }
