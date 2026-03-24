@@ -143,9 +143,10 @@ struct ReferenceItem : Moveable<ReferenceItem> {
 	String id;
 	Point  pos;
 	Point  ref_pos;
+	bool   macro;
 	
-	bool operator==(const ReferenceItem& b) const { return id == b.id && pos == b.pos; }
-	hash_t GetHashValue() const                   { return CombineHash(id, pos); }
+	bool operator==(const ReferenceItem& b) const { return id == b.id && pos == b.pos && macro == b.macro; }
+	hash_t GetHashValue() const                   { return CombineHash(id, pos, macro); }
 	
 	void Serialize(Stream& s);
 };
