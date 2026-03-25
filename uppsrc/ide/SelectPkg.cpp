@@ -688,6 +688,8 @@ void SelectPackageDlg::RemoveInvalid()
 	Vector<String> oks;
 	for(int i = 0; i < base.GetCount(); i++) {
 		String vars = base.Get(i, 0);
+		if(vars == "[external]")
+			continue;
 		VectorMap<String, String> var;
 		LoadVarFile(VarFilePath(vars), var);
 		Vector<String> dirs = Split(var.Get("UPP", ""), ';');
