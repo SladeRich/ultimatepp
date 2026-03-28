@@ -70,13 +70,20 @@ static bool SmallDiff(const char *s1, const char *s2)
 
 void TextDiffCtrl::Set(Stream& l, Stream& r)
 {
-	Vector<String> ll = GetLineMap(l);
-	Vector<String> rl = GetLineMap(r);
+	bool ignore_indent = DirDiffDlg::GetIgnoreIndentation(this);
+	Vector<String> ll = GetLineMap(l, ignore_indent);
+	Vector<String> rl = GetLineMap(r, ignore_indent);
 	Array<TextSection> sections = CompareLineMaps(ll, rl);
 	int outln = 0;
 	left.SetCount(0);
 	right.SetCount(0);
 	int firstdiff = -1;
+	if(ignore_indent) {
+		l.Seek(0);
+		ll = GetLineMap(l);
+		r.Seek(0);
+		rl = GetLineMap(r);
+	}
 	for(int i = 0; i < sections.GetCount(); i++) {
 		const TextSection& sec = sections[i];
 		bool diff = !sec.same;

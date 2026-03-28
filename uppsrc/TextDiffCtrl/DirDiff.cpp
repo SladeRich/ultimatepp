@@ -11,6 +11,7 @@ DirDiffDlg::DirDiffDlg()
 
 	hidden.SetLabel(t_("Hidden"));
 	split_lines.SetLabel(t_("Split long lines"));
+	ignore_indentation.SetLabel(t_("Ignore indentation"));
 	
 	added.SetColor(Green()).SetLabel(t_("New"));
 	modified.SetLabel(t_("Modified"));
@@ -33,7 +34,8 @@ DirDiffDlg::DirDiffDlg()
 	files_pane.Add(dir1.TopPos(0, cy).HSizePos());
 	files_pane.Add(dir2.TopPos(cy + div, cy).HSizePos());
 	files_pane.Add(hidden.TopPos(2 * cy + 2 * div, bcy).LeftPos(0, bcx));
-	files_pane.Add(split_lines.TopPos(2 * cy + 2 * div, bcy).LeftPosZ(52, 100));
+	files_pane.Add(split_lines.TopPos(2 * cy + 2 * div, bcy).LeftPosZ(55, 100));
+	files_pane.Add(ignore_indentation.TopPos(2 * cy + 2 * div, bcy).LeftPosZ(152, 120));
 	
 	files_pane.Add(added.TopPos(3 * cy + 3 * div, bcy).LeftPosZ(2, 60));
 	files_pane.Add(modified.TopPos(3 * cy + 3 * div, bcy).LeftPosZ(52, 70));
@@ -149,6 +151,7 @@ DirDiffDlg::DirDiffDlg()
 	SetupRemove(removeright, &diff.right, &dir2);
 	
 	split_lines << [=] { File(); };
+	ignore_indentation << [=] { File(); };
 
 	Icon(DiffImg::DirDiff());
 

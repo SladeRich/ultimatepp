@@ -260,7 +260,7 @@ void TopicEditor::FileBar(Bar& bar)
 	bar.Add("Export to HTML..", THISBACK(ExportHTML));
 	bar.Add("Export group to HTML..", THISBACK(ExportGroupHTML));
 	bar.Add("Export as GitHub Markdown..", [=] {
-		ExportMarkdown(editor.GetQTF(), GetFileTitle(topicpath));
+		ExportMarkdown(editor.IsSelection() ? AsQTF(editor.GetSelection()) : editor.GetQTF(), GetFileTitle(topicpath));
 	});
 }
 

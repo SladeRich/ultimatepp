@@ -53,7 +53,8 @@ DirRepoDiffDlg::DirRepoDiffDlg()
 	}
 
 	files_pane.Add(hidden.TopPos(y, bcy).LeftPos(0, bcx));
-	files_pane.Add(split_lines.TopPos(y, bcy).LeftPosZ(52, 100));
+	files_pane.Add(split_lines.TopPos(y, bcy).LeftPosZ(55, 100));
+	files_pane.Add(ignore_indentation.TopPos(y, bcy).LeftPosZ(152, 120));
 	files_pane.Add(compare.TopPos(y, bcy).RightPos(0, bcx));
 	y += bcy + div;
 
