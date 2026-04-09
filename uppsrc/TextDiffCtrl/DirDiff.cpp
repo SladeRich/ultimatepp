@@ -182,18 +182,14 @@ void DirDiffDlg::GatherFilesDeep(VectorMap<String, Time>& files, const String& b
 bool DirDiffDlg::FileEqual(const String& f1, const String& f2, int& kind)
 {
 	FileIn in1(f1);
+	in1.SetBufferSize(1024*256);
+	in1.SetBufferSize(1024*256);
 	FileIn in2(f2);
 	if(in1 && in2) {
 		kind = NORMAL_FILE;
-		if(in1.GetSize() != in2.GetSize())
-			return false;
-		
-		while(!in1.IsEof() && !in2.IsEof()) {
-			String a = in1.Get(64*1024);
-			String b = in2.Get(64*1024);
-			if(a != b)
+		while(!in1.IsEof() && !in2.IsEof())
+			if(in1.GetLine() != in2.GetLine())
 				return false;
-		}
 		return true;
 	}
 	else
@@ -346,8 +342,8 @@ void DirDiffDlg::File()
 	};
 
 	diff.Set(Null, Null);
-	String f1 = LoadFile(p1);
-	String f2 = LoadFile(p2);
+	f1 = LoadFile(p1);
+	f2 = LoadFile(p2);
 	if(split_lines) {
 	    f1 = SplitLines(f1);
 	    f2 = SplitLines(f2);
@@ -396,10 +392,11 @@ void DirDiffDlg::Copy(bool left)
 	}
 	if(PromptYesNo("Copy [* \1" + src + "\1]&to [* \1" + dst + "\1] ?")) {
 		Backup(dst);
-		FileIn  in(src);
-		FileOut out(dst);
-		CopyStream(out, in);
-		out.Close();
+		String src_data = f1;
+		String dst_data = f2;
+		if(left)
+			Swap(src_data, dst_data);
+		SaveFile(dst, src_data);
 		Refresh();
 	}
 }
