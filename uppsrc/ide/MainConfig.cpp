@@ -233,7 +233,6 @@ MainConfigDlg::MainConfigDlg(const Workspace& wspc_) : wspc(wspc_) {
 	append.SetImage(IdeImg::add()) << [=] {
 		FlagsDlg cfg;
 		if(cfg.Run() == IDOK) {
-			int q = config.GetCount();
 			cfg.Set(config.Add());
 			LoadList(config.GetCount() - 1);
 		}
