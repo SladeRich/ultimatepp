@@ -134,7 +134,8 @@ mainconfig
 	"" = "GUI HEAPLOG",
 	"" = "GUI X11",
 	"" = "GUI WAYLAND",
-	"" = "GUI DEBUGCODE";
+	"" = "GUI DEBUGCODE",
+	"" = "GUI TRY";
 
 custom() "",
 	"ASDFASDFASDF",

@@ -1,6 +1,9 @@
 #include "Debuggers.h"
 
 #ifdef PLATFORM_WIN32
+#else
+const int TI_GET_COUNT=0;
+#endif
 
 #define LLOG(x) // LOG(x)
 
@@ -401,4 +404,4 @@ void Pdb::TreeWatch()
 	AddWatch(tree_exp + "." + exp);
 }
 
-#endif
+//#endif

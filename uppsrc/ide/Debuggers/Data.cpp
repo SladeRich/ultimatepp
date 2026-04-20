@@ -1,6 +1,6 @@
 #include "Debuggers.h"
 
-#ifdef PLATFORM_WIN32
+//#ifdef PLATFORM_WIN32
 
 #define LLOG(x) // LOG(x)
 
@@ -400,4 +400,4 @@ void Pdb::DropWatch(PasteClip& clip)
 	}
 }
 
-#endif
+//#endif

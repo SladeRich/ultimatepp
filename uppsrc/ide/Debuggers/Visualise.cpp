@@ -1,6 +1,6 @@
 #include "Debuggers.h"
 
-#ifdef PLATFORM_WIN32
+//#ifdef PLATFORM_WIN32
 
 void Pdb::Visual::Cat(const String& text, Color ink)
 {
@@ -117,6 +117,7 @@ void Pdb::CatInt(Visual& result, int64 val, dword flags)
 void Pdb::Visualise(Visual& result, Pdb::Val val, dword flags)
 {
 	DR_LOG("Visualise");
+//DLOG(" adr:"<<Hex(val.address));
 	if(!result.type)
 		result.type = val.type;
 	const int maxlen = 300;
@@ -146,8 +147,11 @@ void Pdb::Visualise(Visual& result, Pdb::Val val, dword flags)
 					dt = "..";
 				}
 				result.Cat(" ");
+//DLOG("Visualise adr:"<<Hex(val.address)<<" n:"<<n);
+//LOGHEXDUMP(~x,n);
 				result.Cat(FormatString(x), SRed);
 				result.Cat(dt, SGray);
+//DLOG("Visualise adr:"<<Hex(val.address)<<" result:"<<result.GetString());
 			}
 			return;
 		}
@@ -419,4 +423,4 @@ void Pdb::VisualDisplay::Paint(Draw& w, const Rect& r, const Value& q,
 	w.DrawRect(x, y, r.right - x, r.Height(), paper);
 }
 
-#endif
+//#endif

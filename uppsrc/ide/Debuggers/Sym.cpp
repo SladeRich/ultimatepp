@@ -1,8 +1,13 @@
 #include "Debuggers.h"
 
 #ifdef PLATFORM_WIN32
+#else
+#include <dlfcn.h>
+#include <dwarf.h>
+#include <sys/ptrace.h>
+#endif
 
-#define LLOG(x)  // DLOG(x)
+#define LLOG(x)   DLOG(x)
 
 #ifdef _DEBUG
 
@@ -43,7 +48,7 @@ String SymTagAsString(int n) {
 	return tagmap.Get(n, "");
 }
 
-const char * BaseTypeAsString( DWORD baseType )
+const char * BaseTypeAsString( dword baseType )
 {
 	switch ( baseType )
 	{
@@ -72,6 +77,7 @@ const char * BaseTypeAsString( DWORD baseType )
 
 adr_t Pdb::GetAddress(FilePos p)
 {
+#ifdef PLATFORM_WIN32
 	LONG dummy;
 	IMAGEHLP_LINE ln;
 	ln.SizeOfStruct = sizeof(ln);
@@ -81,23 +87,135 @@ adr_t Pdb::GetAddress(FilePos p)
 		LLOG("GetAddress " << p.path << "(" << p.line << "): " << Hex(ln.Address));
 		return ln.Address;
 	}
-	LLOG("GetAddress " << p.path << "(" << p.line << "): ??");
-	return 0;
+#else
+	// NEVER(); // Todo Dwarf implementation - done?
+	unsigned pline = p.line + 1;
+	Dwarf_Addr adr = 0;
+	Dwarf_Off off = 0;
+	Dwarf_Off next;
+	size_t hdrSz;
+	// Iterate over compilation units (CU)
+	while (dwarf_nextcu(dwarf, off, &next, &hdrSz, NULL, NULL, NULL) == 0) {
+		Dwarf_Die cu;
+		if (dwarf_offdie(dwarf, off + hdrSz, &cu) != NULL) {
+			if(strcmp(p.path,dwarf_diename(&cu))==0) {
+				Dwarf_Lines *lines;
+				size_t nlines;
+				if (dwarf_getsrclines(&cu, &lines, &nlines) == 0) {
+					unsigned best = ~0;
+					Dwarf_Addr a = 0;
+					for (size_t i = 0; i < nlines; i++) {
+						Dwarf_Line *line = dwarf_onesrcline(lines, i);
+						int lineNum;
+						dwarf_lineaddr(line, &a);
+						dwarf_lineno(line, &lineNum);
+						if (pline<=lineNum) {
+							if (pline==lineNum) {
+								adr = a;
+								LLOG("GetAddress " << p.path << "(" << pline << "): 0x" << Hex(adr) << " line:"<<lineNum);
+								best = 0;
+								break;
+							}
+							unsigned diff = lineNum - pline;
+							if (best>diff) {
+								best = diff;
+							}
+						}
+					}
+					if (best != 0 && best != ~0) {
+						adr = a;
+					}
+				}
+			}
+			break;
+		}
+		off = next;
+	}
+	Dl_info info;
+	if(adr && dladdr((void*)adr, &info)) {
+		adr_t pc = adr + (adr_t)info.dli_fbase;
+		LLOG("GetAddress " << p.path << "(" << pline << "): 0x" << Hex(pc));
+		return pc;
+	}
+	if (adr) {
+		adr_t pc = adr + baseAddress;
+		LLOG("GetAddress " << p.path << "(" << pline << "): 0x" << Hex(pc));
+		return pc;
+	}
+#endif
+
+return 0;
 }
 
 Pdb::FilePos Pdb::GetFilePos(adr_t address)
 {
 	FilePos fp;
+	fp.address = address;
+
+#ifdef PLATFORM_WIN32
+
 	DWORD dummy;
 	IMAGEHLP_LINE ln;
 	ln.SizeOfStruct = sizeof(ln);
-	fp.address = address;
 	if(SymGetLineFromAddr(hProcess, (uintptr_t)address, &dummy, &ln) && FileExists(ln.FileName)) {
 		fp.line = ln.LineNumber - 1;
 		fp.path = ln.FileName;
 		fp.address = ln.Address;
 	}
-	LLOG("GetFilePos(" << Hex(address) << "): " << fp.path << ": " << fp.line);
+
+#else
+
+	//NEVER(); // Todo Dwarf implementation - done?
+  Dwarf_Addr addr = address - baseAddress;
+	Dwarf_Off off = 0;
+	Dwarf_Off next;
+	size_t hdrSz;
+	// Iterate over compilation units (CU)
+	while (dwarf_nextcu(dwarf, off, &next, &hdrSz, NULL, NULL, NULL) == 0) {
+		Dwarf_Die cu;
+		if (dwarf_offdie(dwarf, off + hdrSz, &cu) != NULL) {
+			if(dwarf_haspc(&cu, addr)) {
+				Dwarf_Lines *lines;
+				size_t nlines;
+				if (dwarf_getsrclines(&cu, &lines, &nlines) == 0) {
+					for (size_t i = 0; i < nlines; i++) {
+						Dwarf_Line *line = dwarf_onesrcline(lines, i);
+						Dwarf_Addr adr;
+						dwarf_lineaddr(line, &adr);
+						if (adr<=addr) {
+							int lineNum;
+							dwarf_lineno(line, &lineNum);
+							const char *src = dwarf_linesrc(line, NULL, NULL);
+							LLOG("Seeking file position for local address 0x"<<Hex(addr)<<" address:0x"<<Hex(adr)<<" Line: "<<lineNum<<" Source:"<<src);
+							fp.line = lineNum - 1;
+							fp.path = src;
+							fp.address = address;
+							if (adr==addr) {
+								if (lineNum == 0) {
+									// Dwarf gives 0 when it can not ascertain the line number so just take the next valid line
+									for (++i; i < nlines; i++) {
+										line = dwarf_onesrcline(lines, i);
+										dwarf_lineno(line, &lineNum);
+										if (lineNum != 0) {
+											fp.line = lineNum - 1;
+											break;
+										}
+									}
+								}
+								break;
+							}
+						}
+					}
+				}
+			}
+			break;
+		}
+		off = next;
+	}
+	
+#endif
+
+	LLOG("GetFilePos(0x" << Hex(address) << "): " << fp.path << ": " << fp.line);
 	return fp;
 }
 
@@ -105,7 +223,10 @@ Pdb::FilePos Pdb::GetFilePos(adr_t address)
 
 Pdb::FnInfo Pdb::GetFnInfo0(adr_t address)
 {
-	DWORD64 h;
+	FnInfo fn;
+	LLOG("GetFnInfo 0x" << Hex(address));
+
+#ifdef PLATFORM_WIN32
 
 	ULONG64 buffer[(sizeof(SYMBOL_INFO) + MAX_SYMB_NAME + sizeof(ULONG64) - 1) / sizeof(ULONG64)];
 	SYMBOL_INFO *f = (SYMBOL_INFO*)buffer;
@@ -113,8 +234,7 @@ Pdb::FnInfo Pdb::GetFnInfo0(adr_t address)
 	f->SizeOfStruct = sizeof(SYMBOL_INFO);
 	f->MaxNameLen = MAX_SYMB_NAME;
 
-	LLOG("GetFnInfo " << Format64Hex(address));
-	FnInfo fn;
+	DWORD64 h;
 	if(SymFromAddr(hProcess, address, &h, f)) {
 		LLOG("GetFnInfo " << f->Name
 		     << ", type index: " << f->TypeIndex
@@ -127,6 +247,60 @@ Pdb::FnInfo Pdb::GetFnInfo0(adr_t address)
 		fn.size = f->Size;
 		fn.pdbtype = f->TypeIndex;
 	}
+
+#else
+	//NEVER(); // Todo Dwarf implementation - done?
+	bool done = false;
+  Dwarf_Addr addr = address - baseAddress;
+	Dwarf_Off off = 0;
+	Dwarf_Off next;
+	size_t hdrSz;
+	// Iterate over compilation units (CU)
+	while (dwarf_nextcu(dwarf, off, &next, &hdrSz, NULL, NULL, NULL) == 0) {
+		Dwarf_Die cu;
+		if (dwarf_offdie(dwarf, off + hdrSz, &cu) != NULL) {
+//			LOG(" Dwarf CU: " << dwarf_diename(&cu));
+			// Iterate over children DIEs
+			Dwarf_Die die; // Debugging Information Entry (DIE)
+			if (dwarf_child(&cu, &die) == 0) {
+//				DebugDumpKid(&die,0,&cnt,&disp,verbose);
+				do {
+					int tag = dwarf_tag(&die);
+					bool verbose = false;
+					const char *name = dwarf_diename(&die);
+					Dwarf_Die kid;
+					if (dwarf_child(&die, &kid) == 0) {
+						//LOG("Has kids");
+					}
+					switch(tag) {
+						case DW_TAG_subprogram: {
+							if(dwarf_haspc(&die, addr)) {
+								Dwarf_Addr loAdr=0;
+								dwarf_lowpc(&die, &loAdr);
+								Dwarf_Addr hiAdr=0;
+								dwarf_highpc(&die, &hiAdr);
+								unsigned size = hiAdr - loAdr;
+								LLOG("GetFnInfo " << name
+								     << ", Address: " << Hex(loAdr)
+								     << ", Size: " << Hex(size)
+								     << ", Tag: " << tag);
+								fn.name = name;
+								fn.address = loAdr;
+								fn.size = size;
+								fn.pdbtype = tag;
+								done = true;
+							}
+							break;
+						}
+					}
+					if (done) break;
+				} while (dwarf_siblingof(&die, &die) == 0);
+			}
+		}
+		off = next;
+	}
+
+#endif
 	return fn;
 }
 
@@ -145,6 +319,7 @@ Pdb::FnInfo Pdb::GetFnInfo(adr_t address)
 void Pdb::TypeVal(Pdb::Val& v, int typeId, adr_t modbase)
 {
 	adr_t tag;
+#ifdef PLATFORM_WIN32
 
 	BOOL reference;
 	dword dw = 0;
@@ -199,6 +374,9 @@ void Pdb::TypeVal(Pdb::Val& v, int typeId, adr_t modbase)
 			}
 		}
 	}
+#else
+	NEVER(); // Todo Dwarf implementation
+#endif
 }
 
 struct Pdb::LocalsCtx {
@@ -209,12 +387,14 @@ struct Pdb::LocalsCtx {
 	Context                    *context;
 };
 
-BOOL CALLBACK Pdb::EnumLocals(PSYMBOL_INFO pSym, ULONG SymbolSize, PVOID UserContext)
+bool CALLBACK Pdb::EnumLocals(PSYMBOL_INFO pSym, unsigned long SymbolSize, void* UserContext)
 {
 	LocalsCtx& c = *(LocalsCtx *)UserContext;
 
 	if(pSym->Tag == SymTagFunction)
 		return TRUE;
+
+#ifdef PLATFORM_WIN32
 
 	bool param = pSym->Flags & IMAGEHLP_SYMBOL_INFO_PARAMETER;
 	Val& v = (param ? c.param : c.local).Add(pSym->Name);
@@ -266,18 +446,331 @@ BOOL CALLBACK Pdb::EnumLocals(PSYMBOL_INFO pSym, ULONG SymbolSize, PVOID UserCon
 	DDUMP(pSym->ModBase);
 	DDUMPHEX((adr_t)pSym->Address);
 #endif
-
 	LLOG("LOCAL " << c.pdb->GetType(v.type).name << " " << pSym->Name << ": " << Format64Hex(v.address));
+#else
+	NEVER(); // Todo Dwarf implementation
+#endif
 	return TRUE;
 }
+
+#ifdef PLATFORM_WIN32
+#else
+
+int Pdb::GetValType(Dwarf_Die& die) {
+	int valType = UNKNOWN; // enum { UNKNOWN = -99, BOOL1, SINT1, UINT1, SINT2, UINT2, SINT4, UINT4, SINT8, UINT8, FLT, DBL, PFUNC };
+	int tag = dwarf_tag(&die);
+	if (tag==DW_TAG_base_type) {
+		Dwarf_Word typeSz;
+		dwarf_aggregate_size(&die, &typeSz);
+		Dwarf_Word encoding;
+		Dwarf_Attribute encodingAttr;
+		if (dwarf_attr(&die, DW_AT_encoding, &encodingAttr)) {
+			dwarf_formudata(&encodingAttr, &encoding); // DW_ATE_signed, DW_ATE_unsigned, DW_ATE_float, DW_ATE_boolean, DW_ATE_void etc.
+			switch(encoding) {
+				case DW_ATE_boolean:
+					valType = BOOL1;
+					break;
+				case DW_ATE_signed_char:
+					valType = SINT1;
+					break;
+				case DW_ATE_signed_fixed:
+				case DW_ATE_signed:
+					switch(typeSz) {
+						case 1: valType = SINT1; break;
+						case 2: valType = SINT2; break;
+						case 4: valType = SINT4; break;
+						case 8: valType = SINT8; break;
+					}
+					break;
+				case DW_ATE_unsigned_char: valType = UINT1; break;
+				case DW_ATE_unsigned_fixed:
+				case DW_ATE_unsigned:
+					switch(typeSz) {
+						case 1: valType = UINT1; break;
+						case 2: valType = UINT2; break;
+						case 4: valType = UINT4; break;
+						case 8: valType = UINT8; break;
+					}
+					break;
+				case DW_ATE_decimal_float:
+				case DW_ATE_float:
+					switch(typeSz) {
+						case 4: valType = FLT; break;
+						case 8: valType = DBL; break;
+					}
+					break;
+				case DW_ATE_address:
+					valType = PFUNC;
+					break;
+			}
+		}
+	}
+	else if (tag==DW_TAG_const_type) {
+		// Get the baseType
+		Dwarf_Attribute typeAttr;
+		if (dwarf_attr(&die, DW_AT_type, &typeAttr)) {
+			Dwarf_Die subTypeDie;
+			if (dwarf_formref_die(&typeAttr, &subTypeDie)) {
+				valType = GetValType(subTypeDie); // Const type - need to go deeper
+			}
+		}
+	}
+	else {
+		const char *typeName = dwarf_diename(&die);
+		DLOG("\t\t typeName:"<<(typeName?:""));
+	}
+	return valType;
+}
+
+bool Pdb::GetTypeVal(Pdb::Val* val, Dwarf_Die die) {
+	bool ok = false;
+	int tag = dwarf_tag(&die);
+	const char *name = dwarf_diename(&die);
+	const char *tagName = 0;
+	switch(tag) {
+		case DW_TAG_member:
+			if (!tagName) tagName = "DW_TAG_member";
+		case DW_TAG_inheritance:
+			if (!tagName) tagName = "DW_TAG_inheritance";
+		case DW_TAG_formal_parameter:
+			if (!tagName) tagName = "DW_TAG_formal_parameter";
+		case DW_TAG_variable:
+			if (!tagName) tagName = "DW_TAG_variable";
+			if (tagName) {
+				const char *file = dwarf_decl_file(&die);
+				int line = -1;
+				dwarf_decl_line(&die, &line);
+				LOG("\t\t Tag:"<<tagName<<" #"<<tag<<" line:"<<line<<" file:" << (file ?:"") << " Name:"<<(name ?: ""));
+				// Get variable type info
+				int valType = UNKNOWN; // enum { UNKNOWN = -99, BOOL1, SINT1, UINT1, SINT2, UINT2, SINT4, UINT4, SINT8, UINT8, FLT, DBL, PFUNC };
+				int ref = 0;
+				bool udt = false;
+				bool array = false;
+				Dwarf_Word typeSz = 0;
+				Dwarf_Word rptSz = 0;
+				Dwarf_Word arrayCnt = 0;
+				Dwarf_Attribute typeAttr;
+				Dwarf_Die typeDie;
+				if (dwarf_attr(&die, DW_AT_type, &typeAttr)) {
+					if (dwarf_formref_die(&typeAttr, &typeDie)) {
+						int typeTag = dwarf_tag(&typeDie);
+						if (typeTag==DW_TAG_pointer_type) {
+							ref = 1;
+							// Get the baseType of pointer
+							if (dwarf_attr(&typeDie, DW_AT_type, &typeAttr)) {
+								Dwarf_Die subTypeDie;
+								if (dwarf_formref_die(&typeAttr, &subTypeDie)) {
+									valType = GetValType(subTypeDie);
+								}
+							}
+						}
+						else if (typeTag==DW_TAG_class_type || typeTag==DW_TAG_structure_type) {
+							LLOG("\t\t\t "<<(typeTag==DW_TAG_class_type?"class":"struct") << " DIE offset:"<<dwarf_dieoffset(&typeDie));
+							valType = GetTypeIndex(0,dwarf_dieoffset(&typeDie)); // Get custom val type
+							Type& t = type[valType];
+							t.die = typeDie;
+							Dwarf_Attribute sizeAttr;
+							if (dwarf_attr(&typeDie, DW_AT_byte_size, &sizeAttr)) {
+								dwarf_formudata(&sizeAttr, &rptSz);
+							}
+							udt = true;
+						}
+						else if (typeTag==DW_TAG_array_type) {
+							//LLOG("\t\t\t array");
+							Dwarf_Die typeKid;
+							if (dwarf_child(&typeDie, &typeKid) == 0) {
+								int typeKidTag = dwarf_tag(&typeKid);
+								if (typeKidTag==DW_TAG_subrange_type) {
+									Dwarf_Attribute cntAttr;
+									if (dwarf_attr(&typeKid, DW_AT_count, &cntAttr)) {
+										dwarf_formudata(&cntAttr, &arrayCnt);
+									}
+								}
+							}
+							// Get the baseType of array
+							if (dwarf_attr(&typeDie, DW_AT_type, &typeAttr)) {
+								Dwarf_Die subTypeDie;
+								if (dwarf_formref_die(&typeAttr, &subTypeDie)) {
+										valType = GetValType(subTypeDie);
+								}
+							}
+							array = true;
+						}
+						if (typeTag==DW_TAG_base_type) {
+							valType = GetValType(typeDie);
+						}
+					}
+				}
+				if (valType != UNKNOWN || ref != 0 || udt || array) {
+						val->type = valType;
+						val->array = array;
+						val->udt = udt;
+						val->ref = ref;
+						if (array) {
+							unsigned sz = typeSz;
+							if (sz == 0) {
+								if (rptSz == 0) {
+									sz = 1;
+									switch(valType) {
+										case UINT1: sz = 1; break;
+										case UINT2: sz = 2; break;
+										case UINT4: sz = 4; break;
+										case UINT8: sz = 8; break;
+										case SINT1: sz = 1; break;
+										case SINT2: sz = 2; break;
+										case SINT4: sz = 4; break;
+										case SINT8: sz = 8; break;
+										case FLT:   sz = 4; break;
+										case DBL:   sz = 4; break;
+										#ifdef CPU_64
+										case PFUNC: sz = 8; break;
+										#else
+										case PFUNC: sz = 4; break;
+										#endif
+									}
+								}
+								else {
+									sz = rptSz;
+								}
+							}
+							rptSz = sz * arrayCnt;
+						}
+						val->reported_size = rptSz;
+						ok = true; // Set type
+				}
+				// Get variable location
+				Dwarf_Op *expr;
+				size_t cnt;
+				Dwarf_Attribute locAttr;
+				dwarf_attr(&die, DW_AT_location, &locAttr);
+				if (dwarf_getlocation(&locAttr, &expr, &cnt) == 0) {
+					for (size_t i = 0; i < cnt; ++i) {
+						Dwarf_Op &exp = expr[i];
+						LLOG("\t\t Op:" << (int)exp.atom << " Val1: " << exp.number << " Val2: " << exp.number2);
+						if (DW_OP_lit0 <= exp.atom && exp.atom <= DW_OP_lit31) { // Literal encodings - Push the literal value on to the stack
+							NEVER();
+						}
+						else if (exp.atom == DW_OP_addr) { // Literal encodings - Pushes the address operand on to the stack
+							NEVER();
+						}
+						else if (exp.atom == DW_OP_constu) { // Literal encodings - Pushes the unsigned value on to the stack
+							NEVER();
+						}
+						else if (exp.atom == DW_OP_fbreg) { // Register values - Pushes the value found at the base of the stack frame, offset by the given value
+							int64 reg = exp.number;
+							int64 offset = exp.number2;
+							adr_t bp = context.GetBP();
+							uint64 adr = bp+offset+reg;
+							uint64 v = ptrace(PTRACE_PEEKDATA, mainThreadId, adr, 0);
+							LLOG("\t\t\t bp:0x" << Hex(bp) << " r:0x" << Hex(reg) << " offset:" << offset << " address: 0x" << Hex(adr) << " value:" << v);
+							if (array) {
+								val->address = adr;
+							} else {
+								if (valType==DBL) {
+									#ifdef CPU_64
+									#else
+									uint64 v2 = ptrace(PTRACE_PEEKDATA, mainThreadId, bp+reg+4, 0); // With older 32bit CPU double must be spread across 2 long words
+									v |= v2<<4;
+									#endif
+									double d;
+									memcpy(&d, &v, sizeof d);
+									val->fval = d;
+									val->rvalue = true;
+								}
+								else if (valType==FLT) {
+									float f;
+									memcpy(&f, &v, sizeof f);
+									val->fval = f;
+									val->rvalue = true;
+								}
+								else if (valType>=0) {
+									// This is a custom val type
+									Type& t = type[valType];
+									t.modbase = adr;
+								}
+								else {
+									val->ival = v;
+									val->rvalue = true;
+								}
+							}
+							ok = true; // Value is set
+						}
+						else if (DW_OP_breg0 <= exp.atom && exp.atom <= DW_OP_breg31) { // Register values - Pushes the contents of the given register plus the given offset to the stack
+							NEVER();
+						}
+						else if (exp.atom == DW_OP_dup) { // Stack operations - Duplicate the value at the top of the stack
+							NEVER();
+						}
+						else if (exp.atom == DW_OP_deref) { // Stack operations - Treats the top of the stack as a memory address, and replaces it with the contents of that address
+							NEVER();
+						}
+						else if (exp.atom == DW_OP_and) { // Logical operations - Pops the top two values from the stack and pushes back the logical AND of them
+							NEVER();
+						}
+						else if (exp.atom == DW_OP_plus) { // Arithmetic operations - Pops the top two values from the stack and pushes back the addition of them
+							NEVER();
+						}
+						else if (exp.atom == DW_OP_le || exp.atom == DW_OP_eq || exp.atom == DW_OP_gt) { // Control flow operations - Pops the top two values, compares them, and pushes 1 if the condition is true and 0 otherwise
+							NEVER();
+						}
+						else if (exp.atom == DW_OP_bra) { // Control flow operations - Conditional branch: if the top of the stack is not 0, skips back or forward in the expression by offset
+							NEVER();
+						}
+						else if (exp.atom == DW_OP_convert) { // Type conversions - Converts value on the top of the stack to a different type, which is described by the Dwarf information entry at the given offset
+							NEVER();
+						}
+						else {
+							LLOG("\t\t Unknown variable location");
+							NEVER();
+						}
+					}
+				}
+			}
+			break;
+//		case DW_TAG_structure_type:
+//		case DW_TAG_class_type:
+//			if (name) {
+//				LOG("\t Tag:"<<((tag==DW_TAG_class_type)?"class":"struct")<<" #"<<tag<<" Name:"<<(name ?: ""));
+//			}
+//			break;
+//		case DW_TAG_typedef:
+//			if (name) {
+//				LOG("\t Tag:DW_TAG_typedef #"<<tag<<" Name:"<<(name ?: ""));
+//			}
+//			break;
+//		case DW_TAG_array_type:
+//			if (name) {
+//				LOG("\t Tag:DW_TAG_array_type #"<<tag<<" Name:"<<(name ?: ""));
+//			}
+//			break;
+//		case DW_TAG_enumeration_type:
+//			if (name) {
+//				LOG("\t Tag:DW_TAG_enumeration_type #"<<tag<<" Name:"<<(name ?: ""));
+//			}
+//			break;
+//		case DW_TAG_pointer_type:
+//			if (name) {
+//				LOG("\t Tag:DW_TAG_pointer_type #"<<tag<<" Name:"<<(name ?: ""));
+//			}
+//			break;
+//		case DW_TAG_const_type:
+//			if (name) {
+//				LOG("\t Tag:DW_TAG_const_type #"<<tag<<" Name:"<<(name ?: ""));
+//			}
+//			break;
+		}
+	return ok;
+}
+#endif
 
 void Pdb::GetLocals(Frame& frame, Context& context, VectorMap<String, Pdb::Val>& param,
                     VectorMap<String, Pdb::Val>& local)
 {
 	LLOG("GetLocals *****************");
+#ifdef PLATFORM_WIN32
 	static IMAGEHLP_STACK_FRAME f;
-	f.InstructionOffset = frame.pc;
 	SymSetContext(hProcess, &f, 0);
+	f.InstructionOffset = frame.pc;
 	LocalsCtx c;
 	c.frame = frame.frame;
 	c.pdb = this;
@@ -285,10 +778,65 @@ void Pdb::GetLocals(Frame& frame, Context& context, VectorMap<String, Pdb::Val>&
 	SymEnumSymbols(hProcess, 0, 0, &EnumLocals, &c);
 	param = pick(c.param);
 	local = pick(c.local);
+#else
+	//NEVER(); // Todo Dwarf implementation
+	adr_t ip = context.GetIP();
+	adr_t bp = context.GetBP();
+	adr_t sp = context.GetSP();
+  Dwarf_Addr addr = ip - baseAddress;
+	LOG("Pdb::GetLocals ip:0x"<<Hex(ip)<<" baseAddress:0x"<<Hex(baseAddress)<< " addr:0x"<<Hex(addr));
+	Dwarf_Off off = 0;
+	Dwarf_Off next;
+	size_t hdrSz;
+	// Iterate over compilation units (CU)
+	while (dwarf_nextcu(dwarf, off, &next, &hdrSz, NULL, NULL, NULL) == 0) {
+		Dwarf_Die cu;
+		if (dwarf_offdie(dwarf, off + hdrSz, &cu) != NULL) {
+			// Iterate over children DIEs
+			Dwarf_Die die; // Debugging Information Entry (DIE)
+			if (dwarf_child(&cu, &die) == 0) {
+				do {
+					int tag = dwarf_tag(&die);
+					const char *fnName = dwarf_diename(&die);
+					switch(tag) {
+						case DW_TAG_subprogram:
+							if(dwarf_haspc(&die, addr)) {
+								Dwarf_Addr loAdr=0;
+								dwarf_lowpc(&die, &loAdr);
+								Dwarf_Addr hiAdr=0;
+								dwarf_highpc(&die, &hiAdr);
+								unsigned size = hiAdr - loAdr;
+								LOG("\t Tag:DW_TAG_subprogram #"<<tag<<" loAdr:0x"<<Hex(loAdr)<<" size:"<<(hiAdr-loAdr)<< " Name:"<<(fnName ?: ""));
+								Dwarf_Die kid;
+								if (dwarf_child(&die, &kid) == 0) {
+
+
+									do {
+										Pdb::Val val;
+										if (GetTypeVal(&val, kid)) {
+											int tag = dwarf_tag(&kid);
+											const char *name = dwarf_diename(&kid);
+											if(tag == DW_TAG_formal_parameter) {
+												param.Add(name,val);
+											} else {
+												local.Add(name,val);
+											}
+										}
+									} while (dwarf_siblingof(&kid, &kid) == 0);
+								}
+							}
+							break;
+					}
+				} while (dwarf_siblingof(&die, &die) == 0);
+			}
+		}
+		off = next;
+	}
+#endif
 	LLOG("===========================");
 }
 
-BOOL CALLBACK Pdb::EnumGlobals(PSYMBOL_INFO pSym, ULONG SymbolSize, PVOID UserContext)
+bool CALLBACK Pdb::EnumGlobals(PSYMBOL_INFO pSym, unsigned long SymbolSize, void* UserContext)
 {
 	LocalsCtx& c = *(LocalsCtx *)UserContext;
 
@@ -304,12 +852,16 @@ BOOL CALLBACK Pdb::EnumGlobals(PSYMBOL_INFO pSym, ULONG SymbolSize, PVOID UserCo
 	return TRUE;
 }
 
-void Pdb::LoadGlobals(DWORD64 base)
+void Pdb::LoadGlobals(uint64 base)
 {
+#ifdef PLATFORM_WIN32
 	LocalsCtx c;
 	c.pdb = this;
 	c.context = &context;
 	SymEnumSymbols(hProcess, base, NULL, &EnumGlobals, &c);
+#else
+	NEVER(); // Todo Dwarf implementation
+#endif
 }
 
 Pdb::Val Pdb::GetGlobal(const String& name)
@@ -319,19 +871,32 @@ Pdb::Val Pdb::GetGlobal(const String& name)
 
 String Pdb::GetSymName(adr_t modbase, dword typeindex)
 {
-    WCHAR *pwszTypeName;
-    if(SymGetTypeInfo(hProcess, modbase, typeindex, TI_GET_SYMNAME, &pwszTypeName)) {
+	wchar *pwszTypeName;
+#ifdef PLATFORM_WIN32
+	if(SymGetTypeInfo(hProcess, modbase, typeindex, TI_GET_SYMNAME, &pwszTypeName)) {
 		WString w = pwszTypeName;
 		LocalFree(pwszTypeName);
 		return w.ToString();
-    }
-    return Null;
+	}
+#else
+	NEVER(); // Todo Dwarf implementation
+#endif
+	return Null;
 }
 
 dword Pdb::GetSymInfo(adr_t modbase, dword typeindex, IMAGEHLP_SYMBOL_TYPE_INFO info)
 {
 	dword dw = 0;
+#ifdef PLATFORM_WIN32
 	SymGetTypeInfo(hProcess, modbase, typeindex, info, &dw);
+#else
+	NEVER(); // Todo Dwarf implementation - done ???
+	Dwarf_Die die;
+	if (dwarf_die_addr_die (dwarf, &modbase, &die)) {
+		int typeTag = dwarf_tag(&die);
+		dw = typeTag;
+	}
+#endif
 	return dw;
 }
 
@@ -341,6 +906,7 @@ int Pdb::GetTypeIndex(adr_t modbase, dword typeindex)
 	if(q < 0) {
 		q = type.GetCount();
 		type.Add(typeindex).modbase = modbase;
+		//LLOG("Pdb::GetTypeIndex added new type "<<type.GetCount());
 	}
 	return q;
 }
@@ -350,6 +916,8 @@ const Pdb::Type& Pdb::GetType(int ti)
 	if(ti < 0 || ti >= type.GetCount())
 		ThrowError("Invalid type");
 	Type& t = type[ti];
+#ifdef PLATFORM_WIN32
+
 	int typeindex = type.GetKey(ti);
 	if(t.size < 0) {
 		t.name = GetSymName(t.modbase, typeindex);
@@ -412,14 +980,77 @@ const Pdb::Type& Pdb::GetType(int ti)
 							vt.vtbl_typeindex = -2;
 						}
 					}
-	            }
-		    }
+				}
+			}
 		}
 	}
+	
+#else
+
+	//NEVER(); // Todo Dwarf implementation - done
+	//LLOG("PDB::GetType ("<<ti<<')');
+	if(t.size < 0) {
+		t.name = dwarf_diename(&t.die);
+		Dwarf_Word size = -1;
+		Dwarf_Attribute sizeAttr;
+		if (dwarf_attr(&t.die, DW_AT_byte_size, &sizeAttr)) {
+			dwarf_formudata(&sizeAttr, &size);
+			t.size = size;
+		}
+		Dwarf_Die kid;
+		if (dwarf_child(&t.die, &kid) == 0) {
+			do {
+				int tag = dwarf_tag(&kid);
+				const char *name = dwarf_diename(&kid);
+				switch(tag) {
+					case DW_TAG_member: {
+							Dwarf_Attribute locAttr;
+							Dwarf_Word locOff = 0;
+							if (dwarf_attr(&kid, DW_AT_data_member_location, &locAttr)) {
+								dwarf_formudata(&locAttr, &locOff);
+							}
+							Pdb::Val val;
+							if (GetTypeVal(&val, kid)) {
+								if (val.type<0) {
+									adr_t at = t.modbase + locOff;
+									uint64 v = ptrace(PTRACE_PEEKDATA, mainThreadId, at, 0);
+									LLOG("\t class member "<<name<<" locOff:"<<locOff<<" address 0x:" << Hex(at) << " value:" << v);
+									val.ival = v;
+									val.rvalue = true;
+								}
+								t.member.Add(name,val);
+							}
+						}
+						break;
+					case DW_TAG_inheritance: {
+							Dwarf_Attribute locAttr;
+							Dwarf_Word locOff = 0;
+							if (dwarf_attr(&kid, DW_AT_data_member_location, &locAttr)) {
+								dwarf_formudata(&locAttr, &locOff);
+							}
+							Pdb::Val val;
+							if (GetTypeVal(&val, kid)) {
+								if (val.type<0) {
+									adr_t at = t.modbase + locOff;
+									uint64 v = ptrace(PTRACE_PEEKDATA, mainThreadId, at, 0);
+									LLOG("\t class inheritance "<<name<<" locOff:"<<locOff<<" address 0x:" << Hex(at) << " value:" << v);
+									val.ival = v;
+									val.rvalue = true;
+								}
+								t.member.Add(name,val);
+							}
+						}
+						break;
+				}
+			} while (dwarf_siblingof(&kid, &kid) == 0);
+		}
+	}
+	
+#endif
 	return t;
 }
 
-static int CALLBACK sSymEnum(PSYMBOL_INFO pSym, ULONG SymbolSize, PVOID UserContext)
+static int CALLBACK sSymEnum(PSYMBOL_INFO pSym, unsigned long SymbolSize, void* UserContext)
 {
 	auto type_index = (VectorMap<String, int> *)UserContext;
 	type_index->GetAdd(pSym->Name) = pSym->TypeIndex;
@@ -455,7 +1086,11 @@ int Pdb::FindType(adr_t modbase, const String& name)
 		return q;
 	if(type_bases.Find(modbase) < 0) {
 		type_bases.Add(modbase);
+#ifdef PLATFORM_WIN32
 		SymEnumTypes(hProcess, current_modbase, sSymEnum, &type_index);
+#else
+	NEVER(); // Todo Dwarf implementation
+#endif
 		// DDUMPM(type_index);
 	}
 	int ndx = type_index.Get(name, Null);
@@ -565,4 +1200,4 @@ String Pdb::TypeAsString(int ti, bool deep)
 
 #endif
 
-#endif
+//#endif

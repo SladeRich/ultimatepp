@@ -396,10 +396,8 @@ void AppMain___()
 		ide.Maximize();
 		bool clset = false;
 
-#ifdef PLATFORM_WIN32
 		if(ide.PdbMode(arg))
 			return;
-#endif
 		
 		ide.LoadConfig();
 		

@@ -332,9 +332,7 @@ void Ide::BuildAndExtDebugFile()
 
 One<Debugger> GdbCreate(Host& host, const String& exefile, const String& cmdline, bool console);
 
-#ifdef PLATFORM_WIN32
 One<Debugger> PdbCreate(Host& host, const String& exefile, const String& cmdline, bool clang);
-#endif
 
 void Ide::BuildAndDebug(bool runto)
 {
@@ -364,11 +362,11 @@ void Ide::BuildAndDebug(bool runto)
 
 	bool console = ShouldHaveConsole();
 
-#ifdef PLATFORM_WIN32
-	if(findarg(builder, "GCC") < 0) // llvm-mingw can generate pdb symbolic info
+	String dbg = bm.Get("DEBUGGER", Null);
+	bool gdb = ToUpper(dbg) == "GDB";
+	if(!gdb && findarg(builder, "GCC") < 0) // llvm-mingw can generate pdb symbolic info
 		debugger = PdbCreate(host, target, runarg, builder == "CLANG");
 	else
-#endif
 		debugger = GdbCreate(host, target, runarg, console);
 	
 	if(!debugger) {
@@ -405,8 +403,6 @@ void Ide::BuildAndDebug(bool runto)
 	else
 		debugger->Run();
 }
-
-#ifdef PLATFORM_WIN32
 
 static FileOut *pdb_mode_out;
 
@@ -455,8 +451,6 @@ bool Ide::PdbMode(const Vector<String>& arg)
 	}
 	return false;
 }
-
-#endif
 
 void Ide::DebugClearBreakpoints()
 {

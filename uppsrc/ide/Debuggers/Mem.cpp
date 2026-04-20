@@ -1,29 +1,59 @@
 #include "Debuggers.h"
 
 #ifdef PLATFORM_WIN32
+#else
+#include <sys/ptrace.h>
+#endif
 
-#define LLOG(x)  // DLOG(x)
+#define LLOG(x)   DLOG(x)
 
 int    Pdb::Byte(adr_t addr)
 {
+#ifdef PLATFORM_WIN32
 	if(!win64)
 		addr &= 0xffffffff;
+#endif
 	int page = (int) (addr >> 10);
 	if(invalidpage.Find(page) >= 0)
 		return -1;
 	int pos = (int) (addr & 1023);
 	int q = mempage.Find(page);
+//if (q>=0)	DLOG("Found memory page from 0x" << Hex(addr) << " thread:" << mainThreadId <<" page:" << page << " - " << strerror(errno));
 	if(q >= 0)
 		return (byte)mempage[q].data[pos];
 	if(mempage.GetCount() > 1024)
 		mempage.Clear();
+
+#ifdef PLATFORM_WIN32
 	byte data[1024];
 	if(ReadProcessMemory(hProcess, (LPCVOID) (addr & ~1023), data, 1024, NULL)) {
-		LLOG("ReadProcessMemory " << Hex(addr) << " OK");
+		LLOG("ReadProcessMemory 0x" << Hex(addr) << " OK");
 		memcpy(mempage.Add(page).data, data, 1024);
 		return (byte)data[pos];
 	}
 	LLOG("ReadProcessMemory " << Hex(addr) << ": " << GetLastErrorMessage());
+#else
+	// NEVER(); // Todo Dwarf implementation - done?
+	errno = 0;
+	byte data[1024];
+	adr_t adr = (addr & ~1023);
+	for (int i=0; i<sizeof data; ) {
+		#ifdef CPU_64
+		*(uint64*)(&data[i]) = ptrace(PTRACE_PEEKDATA, mainThreadId, adr, 0);
+		adr += 8;
+		i += 8;
+		#else
+		*(uint32*)(&data[i]) = ptrace(PTRACE_PEEKDATA, mainThreadId, adr, 0);
+		adr += 4;
+		i += 4;
+		#endif
+	}
+	//LLOG("Read 1K memory from 0x" << Hex(addr) << " thread:" << mainThreadId <<" page:" << page << " - " << strerror(errno));
+//LOGHEXDUMP(data,1024);
+	memcpy(mempage.Add(page).data, data, 1024);
+	return (byte)data[pos];
+#endif
+
 	invalidpage.Add(page);
 	return -1;
 }
@@ -72,4 +102,4 @@ WString Pdb::ReadWString(adr_t addr, int maxlen, bool allowzero)
 	return r;
 }
 
-#endif
+//#endif

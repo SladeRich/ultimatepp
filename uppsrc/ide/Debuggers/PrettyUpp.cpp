@@ -1,6 +1,6 @@
 #include "Debuggers.h"
 
-#ifdef PLATFORM_WIN32
+//#ifdef PLATFORM_WIN32
 
 void Pdb::PrettyString(Pdb::Val val, const Vector<String>& tparam, int64 from, int count, Pdb::Pretty& p)
 {
@@ -293,4 +293,4 @@ void Pdb::PrettyImg(Pdb::Val val, const Vector<String>& t, int64 from, int count
 		p.SetNull();
 }
 
-#endif
+//#endif

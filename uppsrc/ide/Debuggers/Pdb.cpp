@@ -6,16 +6,22 @@
 #include             <CtrlLib/key_source.h>
 
 #ifdef PLATFORM_WIN32
-
 #include <tlhelp32.h>
+#else
+#include <link.h>
+#include <sys/ptrace.h>
+#include <sys/personality.h>
+#include <dwarf.h>
+#include <sys/wait.h>
+#endif
 
-Vector<DWORD> GetChildProcessList(DWORD processId) {
-	Vector<DWORD> child, all, parents;
-	
+Vector<dword> GetChildProcessList(dword processId) {
+	Vector<dword> child, all, parents;
+#ifdef PLATFORM_WIN32
 	HANDLE hSnap = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
 	if (hSnap == INVALID_HANDLE_VALUE)
 		return child;
-	
+
 	PROCESSENTRY32 proc;
 	proc.dwSize = sizeof(proc);
 	
@@ -23,14 +29,17 @@ Vector<DWORD> GetChildProcessList(DWORD processId) {
 		CloseHandle(hSnap);
 		return child;
 	}
-	
+
 	do {
 		all << proc.th32ProcessID;
 		parents << proc.th32ParentProcessID;
-    } while(Process32Next(hSnap, &proc));
+	} while(Process32Next(hSnap, &proc));
 	
 	CloseHandle(hSnap);
-	
+#else
+	NEVER(); // Todo DWARF
+#endif
+
 	child << processId;
 	int init = 0;
 	while (true) {
@@ -49,12 +58,16 @@ Vector<DWORD> GetChildProcessList(DWORD processId) {
 	return child;
 }
 
-void TerminateChildProcesses(DWORD dwProcessId, UINT uExitCode) {
-	Vector<DWORD> children = GetChildProcessList(dwProcessId);
+void TerminateChildProcesses(dword dwProcessId, unsigned int uExitCode) {
+	Vector<dword> children = GetChildProcessList(dwProcessId);
 	for (int i = 0; i < children.GetCount(); ++i) {
+#ifdef PLATFORM_WIN32
 		HANDLE hProcess = OpenProcess(PROCESS_TERMINATE, FALSE, children[i]);
 		TerminateProcess(hProcess, uExitCode);
 		CloseHandle(hProcess);
+#else
+	NEVER(); // ToDo DWARF
+#endif
 	}
 }
 
@@ -146,10 +159,6 @@ INITBLOCK
 
 bool Pdb::Create(Host& local, const String& exefile, const String& cmdline, bool clang_)
 {
-	STARTUPINFO si;
-	ZeroMemory(&si, sizeof(STARTUPINFO));
-	si.cb = sizeof(STARTUPINFO);
-	si.dwFlags = 0;
 	String cl;
 	if(exefile.Find(' ') >= 0)
 		cl << '\"' << exefile << '\"';
@@ -158,8 +167,17 @@ bool Pdb::Create(Host& local, const String& exefile, const String& cmdline, bool
 	if(!IsNull(cmdline))
 		cl << ' ' << ToSystemCharset(cmdline);
 
+	exeFilename = exefile;
+	cmdParameters = cmdline;
+
 	clang = clang_;
 
+#ifdef PLATFORM_WIN32
+
+	STARTUPINFO si;
+	ZeroMemory(&si, sizeof(STARTUPINFO));
+	si.cb = sizeof(STARTUPINFO);
+	si.dwFlags = 0;
 	Buffer<char> cmd(cl.GetLength() + 1);
 	memcpy(cmd, cl, cl.GetLength() + 1);
 	PROCESS_INFORMATION pi;
@@ -194,6 +212,44 @@ bool Pdb::Create(Host& local, const String& exefile, const String& cmdline, bool
 		memory.SetTotal(0x80000000);
 	
 	CloseHandle(pi.hThread);
+	
+#else
+
+	// Initialise DWARF and ELF
+	baseAddress = 0;
+	if	(elf_version(EV_CURRENT) == EV_NONE) {
+		Exclamation("ELF library too old");
+		return false;
+	}
+	fdProcess = open(cl, O_RDONLY);
+	elf = elf_begin(fdProcess, ELF_C_READ, NULL);
+	// Initialise Dwarf library dw
+	dwarf = dwarf_begin_elf(elf, DWARF_C_READ, NULL);
+	if (!dwarf) {
+		Exclamation("Error creating process&[* " + DeQtf(exefile) + "]&" + "Dwarf Elf error: " + DeQtf(dwarf_errmsg(-1)));
+		return false;
+	}
+	DR_LOG(DebugDump(true));
+	// Run debugee using fork
+	mainThreadId = fork();
+	if(mainThreadId == -1) {
+		Exclamation("fork failed");
+		return false;
+	}
+	if(mainThreadId == 0) {
+		// Forked child process - debugee
+		personality(ADDR_NO_RANDOMIZE);
+		ptrace(PTRACE_TRACEME, 0, NULL, NULL);
+		const char *args = cmdParameters;
+//		raise(SIGSTOP);
+		execl(exeFilename, exeFilename, args, NULL);
+		Exclamation("execl failed");
+		return false;
+	} else {
+		// Parent process - debugger
+	}
+	
+#endif
 
 	IdeSetRight(rpane);
 	IdeSetBottom(*this);
@@ -201,12 +257,13 @@ bool Pdb::Create(Host& local, const String& exefile, const String& cmdline, bool
 	SyncTreeDisas();
 	
 	LoadFromGlobal(*this, CONFIGNAME);
-
+#ifdef PLATFORM_WIN32
 	if(!SymInitialize(hProcess, 0, FALSE)) {
 		Error("Failed to load symbols");
 		return false;
 	}
 	SymSetOptions(SYMOPT_LOAD_LINES|SYMOPT_UNDNAME|SYMOPT_NO_UNQUALIFIED_LOADS);
+#endif
 
 	lock = 0;
 	stop = false;
@@ -269,8 +326,15 @@ struct CpuRegisterDisplay : Display {
 
 Pdb::Pdb()
 :	visual_display(this) {
+#ifdef PLATFORM_WIN32
 	hWnd = NULL;
 	hProcess = INVALID_HANDLE_VALUE;
+#else
+	fdProcess = 0;
+	elf = 0;
+	debug_threadid = 0;
+	mainThreadId = debug_threadid = 0;
+#endif
 	current_frame.Clear();
 
 	autos.NoHeader();
@@ -425,6 +489,7 @@ void Pdb::Stop()
 		StringStream ss;
 		Store(callback(this, &Pdb::SerializeSession), ss);
 		WorkspaceConfigData("pdb-debugger") = ss;
+#ifdef PLATFORM_WIN32
 		if(hProcess != INVALID_HANDLE_VALUE) {
 			for(int i = 0; i < 10; i++) {
 				if(DebugActiveProcessStop(processid))
@@ -445,10 +510,274 @@ void Pdb::Stop()
 			SymCleanup(hProcess);
 			CloseHandle(hProcess);
 		}
+#else
+		// Todo  DWARF
+//		waitPidCease = true;
+		if (mainThreadId>0) {
+			ptrace(PTRACE_KILL, mainThreadId, NULL, NULL);
+			dwarf_end(dwarf);
+			elf_end(elf);
+			close(fdProcess);
+			while(threads.GetCount())
+				RemoveThread(threads.GetKey(0)); // To CloseHandle
+			UnloadModuleSymbols();
+		}
+#endif
 		StoreToGlobal(*this, CONFIGNAME);
 		IdeRemoveBottom(*this);
 		IdeRemoveRight(rpane);
 	}
+}
+
+void Pdb::DebugDumpKid(Dwarf_Die *die, unsigned depth, unsigned *cnt, unsigned *disp,bool verbose) {
+#ifdef PLATFORM_WIN32
+#else
+	do {
+		(*cnt)++;
+		int tag = dwarf_tag(die);
+		const char *name = dwarf_diename(die);
+		Dwarf_Off offset = dwarf_dieoffset(die);
+		switch(tag) {
+			case DW_TAG_subprogram:
+				if (verbose || name) {
+					const char *file = dwarf_decl_file(die);
+					int line = -1;
+					dwarf_decl_line(die, &line);
+					Dwarf_Addr loAdr=0;
+					dwarf_lowpc(die, &loAdr);
+					Dwarf_Addr hiAdr=0;
+					dwarf_highpc(die, &hiAdr);
+					Dwarf_Addr pcAdr=0;
+					dwarf_entrypc(die, &pcAdr);
+					adr_t adr = 0;
+					Dwarf_Addr *bkpts;
+					int bpCnt = dwarf_entry_breakpoints(die, &bkpts);
+					if (bpCnt>0) {
+						adr = bkpts[0];
+						free(bkpts);
+					}
+					LOG("<"<<depth<<">["<<offset<<"]  Tag:DW_TAG_subprogram #"<<tag<<" name:"<<(name ?: "")<<" adr:0x"<<Hex(adr)<<" loAdr:0x"<<Hex(loAdr)<<" hiAdr:0x"<<Hex(hiAdr)<<" pcAdr:0x"<<Hex(pcAdr)<<" line:"<<line<<" file:" << (file ?:""));
+					(*disp)++;
+				}
+				break;
+			case DW_TAG_variable:
+				if (verbose || name) {
+					const char *file = dwarf_decl_file(die);
+					int line = -1;
+					dwarf_decl_line(die, &line);
+					unsigned typeOff = 0;
+					Dwarf_Attribute typeAttr;
+					Dwarf_Die typeDie;
+					if (dwarf_attr(die, DW_AT_type, &typeAttr)) {
+						if (dwarf_formref_die(&typeAttr, &typeDie)) {
+							Dwarf_Off offset = dwarf_dieoffset(&typeDie);
+							typeOff = offset;
+						}
+					}
+					LOG("<"<<depth<<">["<<offset<<"]  Tag:DW_TAG_variable #"<<tag<<" name:"<<(name ?: "")<<" type:"<<typeOff<<" line:"<<line<<" file:" << (file ?:""));
+					(*disp)++;
+				}
+				break;
+			case DW_TAG_structure_type:
+			case DW_TAG_class_type:
+				if (verbose || name) {
+					const char *file = dwarf_decl_file(die);
+					int line = -1;
+					dwarf_decl_line(die, &line);
+					Dwarf_Word size = -1;
+					Dwarf_Attribute sizeAttr;
+					if (dwarf_attr(die, DW_AT_byte_size, &sizeAttr)) {
+						dwarf_formudata(&sizeAttr, &size);
+					}
+					LOG("<"<<depth<<">["<<offset<<"]  Tag:"<<(tag==DW_TAG_class_type?"DW_TAG_class_type":"DW_TAG_structure_type")<<" name:"<<(name ?: "")<<" #"<<tag<<" size:"<<size<<" line:"<<line<<" file:" << (file ?:""));
+					(*disp)++;
+				}
+				break;
+			case DW_TAG_member:
+				if (verbose || name) {
+					const char *file = dwarf_decl_file(die);
+					int line = -1;
+					dwarf_decl_line(die, &line);
+					unsigned typeOff = 0;
+					Dwarf_Attribute typeAttr;
+					Dwarf_Die typeDie;
+					if (dwarf_attr(die, DW_AT_type, &typeAttr)) {
+						if (dwarf_formref_die(&typeAttr, &typeDie)) {
+							Dwarf_Off offset = dwarf_dieoffset(&typeDie);
+							typeOff = offset;
+						}
+					}
+					Dwarf_Attribute locAttr;
+					Dwarf_Word locIdx = 0;
+					if (dwarf_attr(die, DW_AT_data_member_location, &locAttr)) {
+						dwarf_formudata(&locAttr, &locIdx);
+					}
+					LOG("<"<<depth<<">["<<offset<<"]  Tag:DW_TAG_member #"<<tag<<" name:"<<(name ?: "")<<" type:"<<typeOff<<" locIdx:"<<locIdx<<" line:"<<line<<" file:" << (file ?:""));
+					(*disp)++;
+				}
+				break;
+			case DW_TAG_typedef:
+				if (verbose || name) {
+					LOG("<"<<depth<<">["<<offset<<"]  Tag:DW_TAG_typedef #"<<tag<<" name:"<<(name ?: ""));
+					(*disp)++;
+				}
+				break;
+			case DW_TAG_array_type:
+				if (verbose || name) {
+					LOG("<"<<depth<<">["<<offset<<"]  Tag:DW_TAG_array_type #"<<tag<<" name:"<<(name ?: ""));
+					(*disp)++;
+				}
+				break;
+			case DW_TAG_enumeration_type:
+				if (verbose || name) {
+					LOG("<"<<depth<<">["<<offset<<"]  Tag:DW_TAG_enumeration_type #"<<tag<<" name:"<<(name ?: ""));
+					(*disp)++;
+				}
+				break;
+			case DW_TAG_formal_parameter:
+				if (verbose || name) {
+					unsigned typeOff = 0;
+					Dwarf_Attribute typeAttr;
+					Dwarf_Die typeDie;
+					if (dwarf_attr(die, DW_AT_type, &typeAttr)) {
+						if (dwarf_formref_die(&typeAttr, &typeDie)) {
+							Dwarf_Off offset = dwarf_dieoffset(&typeDie);
+							typeOff = offset;
+						}
+					}
+					LOG("<"<<depth<<">["<<offset<<"]  Tag:DW_TAG_formal_parameter #"<<tag<<" name:"<<(name ?: "")<<" type:"<<typeOff);
+					(*disp)++;
+				}
+				break;
+			case DW_TAG_pointer_type:
+				if (verbose || name) {
+					unsigned typeOff = 0;
+					Dwarf_Attribute typeAttr;
+					Dwarf_Die typeDie;
+					if (dwarf_attr(die, DW_AT_type, &typeAttr)) {
+						if (dwarf_formref_die(&typeAttr, &typeDie)) {
+							Dwarf_Off offset = dwarf_dieoffset(&typeDie);
+							typeOff = offset;
+						}
+					}
+					LOG("<"<<depth<<">["<<offset<<"]  Tag:DW_TAG_pointer_type #"<<tag<<" name:"<<(name ?: "")<<" type:"<<typeOff);
+					(*disp)++;
+				}
+				break;
+			case DW_TAG_subrange_type:
+				if (verbose || name) {
+					LOG("<"<<depth<<">["<<offset<<"]  Tag:DW_TAG_subrange_type #"<<tag<<" name:"<<(name ?: ""));
+					(*disp)++;
+				}
+				break;
+			case DW_TAG_const_type:
+				if (verbose || name) {
+					unsigned typeOff = 0;
+					Dwarf_Attribute typeAttr;
+					Dwarf_Die typeDie;
+					if (dwarf_attr(die, DW_AT_type, &typeAttr)) {
+						if (dwarf_formref_die(&typeAttr, &typeDie)) {
+							Dwarf_Off offset = dwarf_dieoffset(&typeDie);
+							typeOff = offset;
+						}
+					}
+					LOG("<"<<depth<<">["<<offset<<"]  Tag:DW_TAG_const_type #"<<tag<<" name:"<<(name ?: "")<<" type:"<<typeOff);
+					(*disp)++;
+				}
+				break;
+			case DW_TAG_imported_module:
+				if (verbose || name) {
+					LOG("<"<<depth<<">["<<offset<<"]  Tag:DW_TAG_imported_module #"<<tag<<" name:"<<(name ?: ""));
+					(*disp)++;
+				}
+				break;
+			case DW_TAG_reference_type:
+				if (verbose || name) {
+					LOG("<"<<depth<<">["<<offset<<"]  Tag:DW_TAG_reference_type #"<<tag<<" name:"<<(name ?: ""));
+					(*disp)++;
+				}
+				break;
+			case DW_TAG_imported_declaration:
+				if (verbose || name) {
+					LOG("<"<<depth<<">["<<offset<<"]  Tag:DW_TAG_imported_declaration #"<<tag<<" name:"<<(name ?: ""));
+					(*disp)++;
+				}
+				break;
+			case DW_TAG_base_type:
+				if (verbose || name) {
+					LOG("<"<<depth<<">["<<offset<<"]  Tag:DW_TAG_base_type #"<<tag<<" name:"<<(name ?: ""));
+					(*disp)++;
+				}
+				break;
+			case DW_TAG_namespace:
+				if (verbose || name) {
+					LOG("<"<<depth<<">["<<offset<<"]  Tag:DW_TAG_namespace #"<<tag<<" name:"<<(name ?: ""));
+					(*disp)++;
+				}
+				break;
+			case DW_TAG_inheritance:
+				if (verbose || name) {
+					unsigned typeOff = 0;
+					Dwarf_Attribute typeAttr;
+					Dwarf_Die typeDie;
+					if (dwarf_attr(die, DW_AT_type, &typeAttr)) {
+						if (dwarf_formref_die(&typeAttr, &typeDie)) {
+							Dwarf_Off offset = dwarf_dieoffset(&typeDie);
+							typeOff = offset;
+						}
+					}
+					LOG("<"<<depth<<">["<<offset<<"]  Tag:DW_TAG_inheritance #"<<tag<<" name:"<<(name ?: "")<<" type:"<<typeOff);
+					(*disp)++;
+				}
+				break;
+			case DW_TAG_namelist:
+				if (verbose || name) {
+					LOG("<"<<depth<<">["<<offset<<"]  Tag:DW_TAG_namelist #"<<tag<<" name:"<<(name ?: ""));
+					(*disp)++;
+				}
+				break;
+			default:
+				if (verbose || name) {
+					LOG("<"<<depth<<">["<<offset<<"]  Tag:#" << tag<<" name:"<<(name ?: ""));
+					(*disp)++;
+				}
+				break;
+		}
+		Dwarf_Die kid;
+		if (dwarf_child(die, &kid) == 0) {
+			if (die!=&kid) {
+				DebugDumpKid(&kid,depth+1,cnt,disp,verbose);
+			}
+		}
+	} while (dwarf_siblingof(die, die) == 0);
+#endif
+}
+
+const char* Pdb::DebugDump(bool verbose) {
+#ifdef PLATFORM_WIN32
+#else
+	unsigned cnt = 0;
+	unsigned disp = 0;
+	Dwarf_Off off = 0;
+	Dwarf_Off next;
+	size_t hdrSz;
+	// Iterate over compilation units (CU)
+	while (dwarf_nextcu(dwarf, off, &next, &hdrSz, NULL, NULL, NULL) == 0) {
+		Dwarf_Die cu;
+		if (dwarf_offdie(dwarf, off + hdrSz, &cu) != NULL) {
+			LOG("Dwarf CU: " << dwarf_diename(&cu));
+			cnt++; disp++;
+			// Iterate over children DIEs
+			Dwarf_Die die; // Debugging Information Entry (DIE)
+			if (dwarf_child(&cu, &die) == 0) {
+				DebugDumpKid(&die,1,&cnt,&disp,verbose);
+			}
+		}
+		off = next;
+	}
+	LOG("\nDumped "<<disp<<" of "<<cnt<<" entries");
+#endif
+	return "";
 }
 
 bool Pdb::IsFinished()
@@ -515,4 +844,4 @@ bool EditPDBExpression(const char *title, String& brk, Pdb *pdb)
 	return true;
 }
 
-#endif
+//#endif

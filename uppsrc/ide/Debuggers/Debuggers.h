@@ -110,8 +110,8 @@ void MarkChanged(const VectorMap<String, String>& m, ArrayCtrl& data);
 #define KEYFILE      <ide/Debuggers/Pdb.key>
 #include             <CtrlLib/key_header.h>
 
-#ifdef PLATFORM_WIN32
+//#ifdef PLATFORM_WIN32
 #include "Pdb.h"
-#endif
+//#endif
 
 #endif

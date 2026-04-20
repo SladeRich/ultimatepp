@@ -1,6 +1,12 @@
 #include "Debuggers.h"
 
 #ifdef PLATFORM_WIN32
+#else
+#include <sys/ptrace.h>
+#include <sys/wait.h>
+#include <sys/reg.h>
+#include <dwarf.h>
+#endif
 
 #define STATUS_WX86_CONTINUE             0x4000001D
 #define STATUS_WX86_SINGLE_STEP          0x4000001E
@@ -9,7 +15,7 @@
 #define STATUS_WX86_EXCEPTION_LASTCHANCE 0x40000021
 #define STATUS_WX86_EXCEPTION_CHAIN      0x40000022
 
-#define LLOG(x)  // DLOG(x)
+#define LLOG(x)   DLOG(x)
 
 String Pdb::Hex(adr_t a)
 {
@@ -32,8 +38,12 @@ void Pdb::UnloadModuleSymbols()
 	for(int i = 0; i < module.GetCount(); i++) {
 		ModuleInfo& f = module[i];
 		if(f.symbols) {
+#ifdef PLATFORM_WIN32
 			SymUnloadModule64(hProcess, f.base);
 			LLOG("Unloaded symbols for " << f.path << ' ' << Hex(module[i].base) << '/' << hProcess);
+#else
+			//NEVER(); // Todo Dwarf implementation
+#endif
 		}
 	}
 }
@@ -46,9 +56,12 @@ int  Pdb::FindModuleIndex(adr_t base)
 	return -1;
 }
 
+
 void Pdb::LoadModuleInfo()
 {
 	fninfo_cache.Clear();
+
+#ifdef PLATFORM_WIN32
 
 	ModuleInfo f;
 	dword cb = 1;
@@ -95,15 +108,21 @@ void Pdb::LoadModuleInfo()
 	}
 	UnloadModuleSymbols();
 	module = pick(nm);
+
+#else
+	//NEVER(); // Todo Dwarf implementation
+#endif
+
 	refreshmodules = false;
 }
 
 bool Pdb::AddBp(adr_t address)
 {
-	LLOG("AddBp: " << Hex(address));
+	LLOG("AddBp: 0x" << Hex(address));
 	if(bp_set.Find(address) >= 0)
 		return true;
 	byte prev;
+#ifdef PLATFORM_WIN32
 	if(!ReadProcessMemory(hProcess, (LPCVOID) address, &prev, 1, NULL))
 		return false;
 	LLOG("ReadProcessMemory OK");
@@ -112,31 +131,96 @@ bool Pdb::AddBp(adr_t address)
 		return false;
 	LLOG("WriteProcessMemory OK");
 //	FlushInstructionCache (hProcess, (LPCVOID)address, 1);
+#else
+	// Todo Dwarf implementation - done?
+	// Read original instruction
+	adr_t adr = address;
+	#ifdef CPU_64
+	unsigned push = 8*(adr&0x7);
+	adr &= ~0x7;
+	#else
+	unsigned push = 8*(adr&0x3);
+	adr &= ~0x3;
+	#endif
+	uint64 peek64 = ptrace(PTRACE_PEEKDATA, mainThreadId, adr, 0);
+	LLOG("\t Read memory at break point id:"<<mainThreadId<<" 0x"<<Hex(adr)<<" of 0x"<<Hex(peek64));
+	// Insert breakpoint instruction
+	uint64 mask = (uint64)0xff<<push;
+	uint64 int3 = (~mask&peek64) | ((uint64)0xcc<<push);
+	prev = (byte)(peek64>>push);
+	if (ptrace(PTRACE_POKEDATA, mainThreadId, adr, int3)==-1) {
+		LLOG("\t Write memory failed id:"<<mainThreadId<<" at 0x"<<Hex(adr)<<" of 0x"<<Hex(int3)<<" - "<<strerror(errno));
+		return false;
+	}
+	LLOG("\t Write memory at break point id:"<<mainThreadId<<" 0x"<<Hex(adr)<<" to 0x"<<Hex(int3));
+#endif
 	bp_set.Put(address, prev);
 	return true;
 }
 
 bool Pdb::RemoveBp(adr_t address)
 {
+	LLOG("RemoveBp: " << Hex(address));
 	int pos = bp_set.Find(address);
 	if(pos < 0)
 		return true;
+#ifdef PLATFORM_WIN32
 	if(!WriteProcessMemory(hProcess, (LPVOID)address, &bp_set[pos], 1, NULL))
 		return false;
 	FlushInstructionCache(hProcess, (LPCVOID)address, 1);
+#else
+	// Todo Dwarf implementation - done?
+	adr_t adr = address;
+	#ifdef CPU_64
+	unsigned push = 8*(address&0x7);
+	adr &= ~0x7;
+	#else
+	unsigned push = 8*(address&0x3);
+	adr &= ~0x3;
+	#endif
+	uint64 peek64 = ptrace(PTRACE_PEEKDATA, mainThreadId, adr, 0);
+	uint64 mask = (uint64)0xff<<push;
+	uint64 poke64 = (~mask&peek64) | ((uint64)bp_set[pos]<<push);
+	if(ptrace(PTRACE_POKEDATA, mainThreadId, adr, poke64, NULL)==-1) {
+		LLOG("\t Poke id:"<<mainThreadId<<" at 0x"<<Hex(adr)<<" of 0x"<<Hex(poke64)<<" failed - "<<strerror(errno));
+		return false;
+	}
+	LLOG("\t Restore memory at break point 0x"<<Hex(adr)<<" to 0x"<<Hex(poke64));
+#endif
 	bp_set.Unlink(pos);
 	return true;
 }
 
 bool Pdb::RemoveBp()
 {
+	LLOG("RemoveBp: all");
 	for(int i = bp_set.GetCount(); --i >= 0;)
 		if(!bp_set.IsUnlinked(i)) {
 			adr_t address = bp_set.GetKey(i);
+#ifdef PLATFORM_WIN32
 			if(!WriteProcessMemory(hProcess, (LPVOID)address, &bp_set[i], 1, NULL))
 				return false;
 			FlushInstructionCache(hProcess, (LPCVOID)address, 1);
 			bp_set.Unlink(i);
+#else
+			// Todo Dwarf implementation - done?
+			adr_t adr = address;
+			#ifdef CPU_64
+			unsigned push = 8*(address&0x7);
+			adr &= ~0x7;
+			#else
+			unsigned push = 8*(address&0x3);
+			adr &= ~0x3;
+			#endif
+			uint64 peek64 = ptrace(PTRACE_PEEKDATA, mainThreadId, adr, 0);
+			uint64 mask = (uint64)0xff<<push;
+			uint64 poke64 = (~mask&peek64) | ((uint64)bp_set[i]<<push);
+			if(ptrace(PTRACE_POKEDATA, mainThreadId, adr, poke64, NULL)==-1) {
+				LLOG("\t Poke id:"<<mainThreadId<<" at 0x"<<Hex(adr)<<" index:"<<i<<" of 0x"<<Hex(bp_set[i])<<" failed - "<<strerror(errno));
+			}
+			LLOG("\t Restore memory at break point 0x"<<Hex(adr)<<" of 0x"<<Hex(poke64));
+			bp_set.Unlink(i);
+#endif
 		}
 	bp_set.Clear();
 	return true;
@@ -151,7 +235,9 @@ void Pdb::SyncFrameButtons()
 
 void Pdb::Lock()
 {
+DLOG("Lock");
 	if(lock == 0) {
+DLOG("Locked");
 		IdeHidePtr();
 		IdeDebugLock();
 		watches.Disable();
@@ -168,8 +254,10 @@ void Pdb::Lock()
 
 void Pdb::Unlock()
 {
+DLOG("Unlock");
 	lock--;
 	if(lock == 0) {
+DLOG("Unlocked");
 		IdeDebugUnLock();
 		watches.Enable();
 		locals.Enable();
@@ -180,10 +268,13 @@ void Pdb::Unlock()
 	}
 }
 
-Pdb::Context Pdb::ReadContext(HANDLE hThread)
+
+Pdb::Context Pdb::ReadContext(int hThread)
 {
 	DR_LOG("ReadContext");
 	Context r;
+#ifdef PLATFORM_WIN32
+
 #ifdef CPU_64
 	if(win64) {
 		CONTEXT ctx;
@@ -210,17 +301,27 @@ Pdb::Context Pdb::ReadContext(HANDLE hThread)
 			Error("GetThreadContext failed");
 	memcpy(&r.context32, &ctx, sizeof(CONTEXT));
 #endif
+
+#else
+
+	//NEVER(); // Todo Dwarf implementation done?
+	ptrace(PTRACE_GETREGS, hThread, NULL, &r);
+#endif
+	LLOG("ReadContext hThread:"<<hThread<<" rax:0x"<<Hex(r.regs.rax)<<" rip:0x"<<Hex(r.regs.rip)<<" rsp:0x"<<Hex(r.regs.rsp)<<" eflags:0x"<<Hex(r.regs.eflags));
 	return r;
 }
 
-void Pdb::WriteContext(HANDLE hThread, Context& context)
+void Pdb::WriteContext(int hThread, Context& context)
 {
 	DR_LOG("WriteContext");
+
+#ifdef PLATFORM_WIN32
+
 #ifdef CPU_64
 	if(win64) {
 		CONTEXT ctx;
 		memcpy(&ctx, &context.context64, sizeof(CONTEXT));
-		ctx.ContextFlags = CONTEXT_CONTROL;
+		ctx.ContextFlags = CONTEXT_CONTROL; // CONTEXT_CONTROL specifies SegSs, Rsp, SegCs, Rip, and EFlags. for x64, CONTEXT_CONTROL specifies Sp, Lr, Pc, and Cpsr for arm specifies FP, LR, SP, PC, and CPSR for arm64
 		if(!SetThreadContext(hThread, &ctx))
 			Error("SetThreadContext failed");
 	}
@@ -241,34 +342,61 @@ void Pdb::WriteContext(HANDLE hThread, Context& context)
 	if(!SetThreadContext(hThread, &ctx))
 		Error("SetThreadContext failed");
 #endif
+
+#else
+
+	//NEVER(); // Todo Dwarf implementation done?
+	DR_LOG("WriteContext");
+	LLOG("WriteContext hThread:"<<hThread<<" IP:0x"<<Hex(context.GetIP())<<" SP:0x"<<Hex(context.GetSP())<<" BP:0x"<<Hex(context.GetBP()));
+	DLOG("WriteContext hThread:"<<hThread<<" rax:0x"<<Hex(context.regs.rax)<<" rip:0x"<<Hex(context.GetIP())<<" rsp:0x"<<Hex(context.GetSP())<<" eflags:0x"<<Hex(context.regs.eflags));
+	if(ptrace(PTRACE_SETREGS, hThread, NULL, &context.regs)==-1) {
+		LLOG("Pdb::WriteContext PTRACE_SETREGS id:"<<hThread<<" failed - "<<strerror(errno));
+		Error("SetThreadContext failed");
+	}
+#endif
 }
 
-void Pdb::AddThread(dword dwThreadId, HANDLE hThread)
+bool Pdb::AddThread(dword dwThreadId, int hThread)
 {
 	if(threads.Find(dwThreadId) >= 0)
-		return;
+		return false; // Already have this thread
 	DR_LOG("AddThread");
 	Thread& f = threads.GetAdd(dwThreadId);
 	// Retrive "base-level" stack-pointer, to have limit for stackwalks:
 	Context c = ReadContext(hThread);
+#ifdef PLATFORM_WIN32
 #ifdef CPU_64
 	f.sp = win64 ? c.context64.Rsp : c.context32.Esp;
 #else
 	f.sp = c.context32.Esp;
 #endif
+#else
+#ifdef CPU_64
+	f.sp = c.regs.rsp;
+#else
+	f.sp = c.regs.esp;
+#endif
+#endif
 	f.hThread = hThread;
-	LLOG("Adding thread " << dwThreadId << ", Thread SP: " << Hex(f.sp) << ", handle: " << FormatIntHex((dword)(uintptr_t)(hThread)));
+	LLOG("Adding thread " << dwThreadId << ", Thread SP: 0x" << Hex(f.sp) << ", handle: 0x" << FormatIntHex((dword)(uintptr_t)(hThread)));
+	return true;
 }
 
-void Pdb::RemoveThread(dword dwThreadId)
+bool Pdb::RemoveThread(dword dwThreadId)
 {
 	int q = threads.Find(dwThreadId);
 	if(q >= 0) {
 		Thread& f = threads[q];
-		LLOG("Closing thread " << dwThreadId << ", handle: " << FormatIntHex((dword)(uintptr_t)(f.hThread)));
+		LLOG("Closing thread " << dwThreadId << ", handle: 0x" << FormatIntHex((dword)(uintptr_t)(f.hThread)));
+#ifdef PLATFORM_WIN32
 		CloseHandle(f.hThread);
+#else
+		//NEVER(); // Todo Dwarf implementation
+#endif
 		threads.Remove(q);
+		return true;
 	}
+	return false;
 }
 
 #define EXID(id)       { id, #id },
@@ -278,6 +406,7 @@ struct {
 	const char *text;
 }
 ex_desc[] = {
+#ifdef PLATFORM_WIN32
 	EXID(EXCEPTION_ACCESS_VIOLATION)
 	EXID(EXCEPTION_ARRAY_BOUNDS_EXCEEDED)
 	EXID(EXCEPTION_DATATYPE_MISALIGNMENT)
@@ -296,19 +425,25 @@ ex_desc[] = {
 	EXID(EXCEPTION_NONCONTINUABLE_EXCEPTION)
 	EXID(EXCEPTION_PRIV_INSTRUCTION)
 	EXID(EXCEPTION_STACK_OVERFLOW )
+#endif
 };
 
 void Pdb::RestoreForeground()
 {
+#ifdef PLATFORM_WIN32
 	if(hWnd) {
 		SetForegroundWindow(hWnd);
 		LLOG("Restored foreground window: " << FormatIntHex((dword)(uintptr_t)hWnd));
 	}
 	hWnd = NULL;
+#else
+	//NEVER(); // Todo Dwarf implementation
+#endif
 }
 
 void Pdb::SaveForeground()
 {
+#ifdef PLATFORM_WIN32
 	HWND hwnd = GetForegroundWindow();
 	if(hwnd) {
 		DWORD pid;
@@ -318,6 +453,9 @@ void Pdb::SaveForeground()
 			LLOG("Saved foreground window: " << Hex((adr_t)hWnd));
 		}
 	}
+#else
+	//NEVER(); // Todo Dwarf implementation
+#endif
 }
 
 void Pdb::ToForeground()
@@ -337,6 +475,7 @@ bool Pdb::RunToException()
 	bool disasfocus = disas.HasFocus();
 	bool locked = false;
 	bool frestored = false;
+//	int childPid = 0;
 	invalidpage.Clear();
 	mempage.Clear();
 	int opn = 0;
@@ -348,6 +487,9 @@ bool Pdb::RunToException()
 		}
 		opn++;
 		DR_LOG("WaitForDebugEvent");
+		
+#ifdef PLATFORM_WIN32
+
 		if(WaitForDebugEvent(&event, 0)) {
 			DR_LOG("WaitForDebugEvent ended");
 			debug_threadid = event.dwThreadId;
@@ -485,6 +627,181 @@ bool Pdb::RunToException()
 			ContinueDebugEvent(event.dwProcessId, event.dwThreadId, DBG_EXCEPTION_NOT_HANDLED);
 			running = true;
 		}
+
+#else
+
+		// Todo Dwarf implementation - done
+		int status;
+		pid_t pid = waitpid(mainThreadId, &status, WNOHANG|__WALL|__WCLONE); // Wait for the child debugee to stop
+		if (pid>0) {
+			DR_LOG("Debugee captured "<<pid);
+			LLOG(">>> Debugee captured "<<pid);
+			opn = 0;
+			running = false;
+			if(first_exception) {
+				first_exception = false;
+				// Read base address from /proc map table
+				char line[256];
+				String procfile;
+				procfile << "/proc/"<<mainThreadId<<"/maps";
+				FILE* fp = fopen(procfile, "r");
+				if (fp) {
+					if (fgets(line, sizeof(line), fp)) {
+						baseAddress = strtoul(line, NULL, 16);
+						LLOG("Extract base address 0x" << Hex(baseAddress) << " from map" << procfile);
+					}
+					fclose(fp);
+				}
+				if (AddThread(pid, pid)) {
+					DR_LOG("Create main thread: " << pid);
+					LLOG("Create main thread: " << pid);
+				}
+//ptrace(PTRACE_ATTACH, mainThreadId, NULL, NULL);
+//ptrace(PTRACE_SEIZE, mainThreadId, NULL, NULL);
+//ptrace(PTRACE_SYSCALL, mainThreadId, NULL, NULL);
+				ptrace(PTRACE_SETOPTIONS, mainThreadId, NULL, PTRACE_O_TRACECLONE|PTRACE_O_TRACEFORK); // Enable multi threading debugging
+			}
+			// Check if child process finished
+			if(WIFEXITED(status)) {
+				DR_LOG("ptrace debug event exited normally with status"<<WEXITSTATUS(status));
+				if(locked)
+					Unlock();
+				Stop();
+				if (RemoveThread(pid)) {
+					DR_LOG("Exit thread: " << mainThreadId);
+					LLOG("Exit thread: " << mainThreadId);
+				}
+				return false;
+			}
+			Context ctx = ReadContext(pid);
+			uint64 ip = ctx.GetIP();
+			// Check if child stopped - normal debugging
+			if(WIFSTOPPED(status)) {
+				siginfo_t info;
+				SaveForeground();
+				int stopSig = WSTOPSIG(status);
+				LLOG("Debugee child stopped with code "<<stopSig<<" at 0x"<<Hex(ip));
+				if(stopSig==SIGTRAP || stopSig==SIGSTOP) { // SIGTRAP(5) Trace/breakpoint trap / SIGSTOP(19) - TRAP_TRACE sent on single step
+					bool halt = true;
+					ptrace(PTRACE_GETSIGINFO, pid, NULL, &info);
+					int statusBits = status>>8;
+					if (statusBits == (SIGTRAP | (PTRACE_EVENT_CLONE << 8))) {
+						// New thread
+						unsigned long procId = 0;
+						ptrace(PTRACE_GETEVENTMSG, pid, NULL, &procId);
+						LLOG("New thread cloned "<<procId<<" pid:"<<pid<<" mainThreadId:"<<mainThreadId);
+						debug_threadid = procId;
+						halt = false;
+						ptrace(PTRACE_CONT, procId, NULL, NULL);
+					}
+					else if (statusBits == (SIGTRAP | (PTRACE_EVENT_FORK << 8))) {
+						// New thread
+						unsigned long forkId = 0;
+						ptrace(PTRACE_GETEVENTMSG, pid, NULL, &forkId);
+						LLOG("New thread cloned "<<forkId<<" pid:"<<pid<<" mainThreadId:"<<mainThreadId);
+						debug_threadid = forkId;
+						halt = false;
+						ptrace(PTRACE_CONT, forkId, NULL, NULL);
+
+					} else {
+						debug_threadid = pid;
+					}
+					context = ctx;
+					int q = threads.Find(debug_threadid);
+					if(q >= 0) {
+						Thread& f = threads[q];
+						f.regs = context.regs;
+					}
+					if (halt) {
+					
+						bool singleStep = info.si_code==TRAP_TRACE;
+						bool isbreakpoint = info.si_code==TRAP_BRKPT || info.si_code==SI_KERNEL;
+						LLOG("\t Got "<<(stopSig==SIGTRAP?"SIGTRAP":"SIGSTOP")<<"("<<stopSig<<") trace/breakpoint break_running:"<<break_running<<" isbreakpoint:"<<isbreakpoint<<" mainThreadId:"<<mainThreadId<<" debug_threadid:"<<debug_threadid);
+						ToForeground();
+						if(disasfocus)
+							disas.SetFocus();
+						if(locked)
+							Unlock();
+						if(refreshmodules)
+							LoadModuleInfo();
+						if(isbreakpoint) {
+							if (bp_set.Find(ip - 1) >= 0) {
+								// We have stopped at breakpoint, need to move address back
+								ip--;
+								LLOG("\t SIGTRAP("<<info.si_signo<<") breakpoint - moved address back from ip:0x"<<Hex((ip+1))<<" to 0x"<<Hex(ip));
+								context.SetIP(ip);
+								ptrace(PTRACE_SETREGS, debug_threadid, NULL, &context.regs);
+							}
+						}
+						break_running = false;
+						LLOG("<<< Debugee is paused "<<debug_threadid);
+						RemoveBp();
+						return true; // Target is paused
+					}
+				}
+				if(stopSig==SIGILL) { // SIGILL(4) - Program counter is not pointing to an instruction
+					ptrace(PTRACE_GETSIGINFO, pid, NULL, &info);
+					DR_LOG("\t Got SIGILL("<<info.si_signo<<") "<<" code:"<<info.si_code<<" - program counter is not pointing to an instruction");
+					LLOG("\t Got SIGILL("<<info.si_signo<<") "<<" code:"<<info.si_code<<" - program counter is not pointing to an instruction");
+					return false; // It is not going to run
+				}
+				if(stopSig==SIGSEGV) { // SIGSEGV(11)
+					ptrace(PTRACE_GETSIGINFO, pid, NULL, &info);
+					DR_LOG("\t Got SIGSEGV("<<info.si_signo<<") code:"<<info.si_code);
+					LLOG("\t Got SIGSEGV("<<info.si_signo<<") code:"<<info.si_code);
+					ToForeground();
+					BeepError();
+					String desc = "Debug caught exeception";
+					if (info.si_errno!=0)
+						desc << " - " << strerror(info.si_errno);
+					if(!Prompt(Ctrl::GetAppName(), CtrlImg::error(), desc, t_("OK"), t_("Stop"))) {
+						Stop();
+						if (RemoveThread(pid)) {
+							DR_LOG("Exit thread: " << pid);
+							LLOG("Exit thread: " << pid);
+						}
+						LLOG("<<< Debugee aborted "<<pid);
+						return false; // Target has an exception, user has opted out
+					}
+				}
+				if(stopSig==SIGCHLD) { // SIGCHLD(17)
+					ptrace(PTRACE_GETSIGINFO, pid, NULL, &info);
+					DR_LOG("\t Got SIGCHLD("<<info.si_signo<<") "<<" code:"<<info.si_code);
+					LLOG("\t Got SIGCHLD("<<info.si_signo<<") "<<" code:"<<info.si_code);
+					ToForeground();
+					BeepError();
+					String desc = "Debug failed to run";
+					if (info.si_errno!=0)
+						desc << " - " << strerror(info.si_errno);
+					Prompt(Ctrl::GetAppName(), CtrlImg::error(), desc, t_("OK"));
+					Stop();
+					if (RemoveThread(pid)) {
+						DR_LOG("Exit thread: " << pid);
+						LLOG("Exit thread: " << pid);
+					}
+					LLOG("<<< Debugee failed to run" << pid);
+					ptrace(PTRACE_CONT, pid, NULL, NULL);
+					return false; // It has failed to run, it is dead
+				}
+			}
+			else if(WIFSIGNALED(status)) {
+				DR_LOG("Debugee child killed with signal "<<WTERMSIG(status)<<" at 0x"<<Hex(ip));
+				LLOG("Debugee child killed with signal "<<WTERMSIG(status)<<" at 0x"<<Hex(ip));
+				if(locked)
+					Unlock();
+				Stop();
+				LLOG("<<< Debugee dead "<<pid);
+				return false; // It has died
+			}
+			else if(WIFCONTINUED(status)) {
+				LLOG("Continued");
+			}
+			LLOG("<<< Debugee continued "<<pid);
+			ptrace(PTRACE_CONT, pid, NULL, NULL);
+			running = true;
+		}
+#endif
+		
 		if(ts.Elapsed() > 200) {
 			DR_LOG("ts.Elpsed() > 200");
 			if(!lock) {
@@ -517,12 +834,19 @@ const CONTEXT& Pdb::CurrentContext()
 
 void Pdb::WriteContext()
 {
+#ifdef PLATFORM_WIN32
 	WriteContext(threads.Get(event.dwThreadId).hThread, context);
+#else
+	//NEVER(); // Todo Dwarf implementation?
+	WriteContext(threads.Get(debug_threadid).hThread, context);
+#endif
 }
 
 bool Pdb::SingleStep()
 {
 	LLOG("SINGLE STEP 0");
+#ifdef PLATFORM_WIN32
+
 #if CPU_64
 	if(win64)
 		context.context64.EFlags |= 0x100;
@@ -541,14 +865,31 @@ bool Pdb::SingleStep()
 #endif
 		context.context32.EFlags &= ~0x100;
 	WriteContext();
+
+#else
+
+	// Todo Dwarf implementation - done?
+	if (ptrace(PTRACE_SINGLESTEP, mainThreadId, NULL, NULL)==-1) {
+		LOG("ptrace PTRACE_SINGLESTEP failed ID:"<<mainThreadId<<" - "<<strerror(errno));
+		return false;
+	}
+	RunToException();
+
+#endif
 	return true;
 }
 
 bool Pdb::Continue()
 {
-	LLOG("** Continue");
 	running = true;
+#ifdef PLATFORM_WIN32
+	LLOG("** Continue "<<event.dwProcessId<<" "<<event.dwThreadId);
 	ContinueDebugEvent(event.dwProcessId, event.dwThreadId, DBG_CONTINUE);
+#else
+	// Todo Dwarf implementation - done?
+	LLOG("*** Continue "<<debug_threadid);
+	ptrace(PTRACE_CONT, debug_threadid, NULL, NULL);
+#endif
 	return RunToException();
 }
 
@@ -563,6 +904,7 @@ void Pdb::BreakRunning() //TODO: Fix in wow64?
 {
 	stop = true;
 	if(running) {
+#ifdef PLATFORM_WIN32
 		BOOL (WINAPI *debugbreak)(HANDLE Process);
 		debugbreak = (BOOL (WINAPI *)(HANDLE))
 		             GetProcAddress(GetModuleHandle("kernel32.dll"), "DebugBreakProcess");
@@ -573,7 +915,19 @@ void Pdb::BreakRunning() //TODO: Fix in wow64?
 		}
 		else
 			Exclamation("Operation is not supported on this OS");
+#else
+	//NEVER(); // Todo Dwarf implementation - done?
+	LLOG("Pdb::BreakRunning mainThreadId:"<<mainThreadId);
+	
+errno = 0 ;
+//	ptrace(PTRACE_ATTACH, mainThreadId, NULL, NULL);
+//	ptrace(PTRACE_SEIZE, mainThreadId, NULL, NULL);
+//	ptrace(PTRACE_SYSCALL, mainThreadId, NULL, NULL);
+	ptrace(PTRACE_INTERRUPT, mainThreadId, NULL, NULL); // Issue a debugger stop request
+DLOG(">>>>>>>>>>>>>>>>> PTRACE_INTERRUPT "<<strerror(errno));
+
+#endif
 	}
 }
 
-#endif
+//#endif

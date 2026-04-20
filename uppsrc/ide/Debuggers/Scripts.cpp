@@ -1,6 +1,6 @@
 #include "Debuggers.h"
 
-#ifdef PLATFORM_WIN32
+//#ifdef PLATFORM_WIN32
 
 #define LTIMESTOP(x)
 #define LLOG(x)
@@ -246,4 +246,4 @@ bool Pdb::PrettyScript(const String& type, Pdb::Val val, const Vector<String>& t
 	return ret;
 }
 
-#endif
+//#endif

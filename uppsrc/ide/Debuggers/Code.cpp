@@ -1,6 +1,9 @@
 #include "Debuggers.h"
 
 #ifdef PLATFORM_WIN32
+#else
+#include <capstone/capstone.h>
+#endif
 
 #define LLOG(x) // DLOG(x)
 
@@ -16,9 +19,38 @@ int Pdb::Disassemble(adr_t ip)
 			break;
 		code[i] = q;
 	}
+#ifdef PLATFORM_WIN32
 	int sz = NDisassemble(out, code, ip, win64);
 	if(sz > i)
 		return -1;
+#else
+	int sz = 0;
+	csh handle;
+	cs_insn* insn;
+#ifdef CPU_64
+	cs_arch arch = CS_ARCH_X86;
+	cs_mode mode = CS_MODE_64;
+#else
+	cs_arch arch = CS_ARCH_X86;
+	cs_mode mode = CS_MODE_64;
+#endif
+	if(cs_open(arch, mode, &handle) != CS_ERR_OK)
+		return 0;
+	size_t count = cs_disasm(handle, code, i, ip, 1, &insn);
+	if(count > 0) {
+		cs_insn &ins = insn[0];
+		sprintf(out,"%s\t%s", ins.mnemonic, ins.op_str);
+		sz = (int)ins.size;
+		//LLOG("Pdb::Disassemble count:"<<count<<" sz:"<<sz<<" ip:0x"<<Hex(ip)<<" asm:"<<out);
+		cs_free(insn, count);
+	}
+	else {
+		// This must be data not code
+		sprintf(out, ".byte %02x",code[0]);
+		sz = 1;
+	}
+	cs_close(&handle);
+#endif
 	disas.Add(ip, out, Null, String(code, sz));
 	try {
 		CParser p(out);
@@ -32,6 +64,7 @@ int Pdb::Disassemble(adr_t ip)
 		}
 	}
 	catch(CParser::Error) {}
+	LLOG("Pdb::Disassemble sz:"<<sz<<" for ip:0x"<<Hex(ip)<<" "<<out);
 	return sz;
 }
 
@@ -47,11 +80,20 @@ bool Pdb::IsValidFrame(adr_t eip)
 
 adr_t Pdb::GetIP()
 {
+#ifdef PLATFORM_WIN32
+
 #ifdef CPU_64
 	if(win64)
 		return context.context64.Rip;
 #endif
 	return context.context32.Eip;
+
+#else
+
+	//NEVER(); // Todo Dwarf implementation - done?
+	return context.GetIP();
+
+#endif
 }
 
 void Pdb::Sync()
@@ -256,12 +298,27 @@ void Pdb::SetIp()
 	adr_t a = CursorAdr();
 	if(!a)
 		return;
+	
+#ifdef PLATFORM_WIN32
+
 #ifdef CPU_64
 	if(win64)
 		context.context64.Rip = a;
 	else
 #endif
 		context.context32.Eip = (DWORD)a;
+
+#else
+
+	//NEVER(); // Todo Dwarf implementation - done?
+#ifdef CPU_64
+	context.regs.rip = a;
+#else
+	context.regs.eip = a;
+#endif
+
+#endif
+
 	WriteContext();
 	frame[0].pc = a;
 	framelist <<= 0;
@@ -284,13 +341,40 @@ bool Pdb::Step(bool over)
 				byte code[32];
 				memset(code, 0, 32);
 				adr_t ip = GetIP();
-				for(int i = 0; i < 32; i++) {
+				int i;
+				for(i = 0; i < 32; i++) {
 					int q = Byte(ip + i);
 					if(q < 0)
 						break;
 					code[i] = q;
 				}
+#ifdef PLATFORM_WIN32
 				l = NDisassemble(out, code, GetIP(), win64);
+#else
+				//NEVER(); // Todo Dwarf implementation - done?
+				csh handle;
+				cs_insn* insn;
+#ifdef CPU_64
+				cs_arch arch = CS_ARCH_X86;
+				cs_mode mode = CS_MODE_64;
+#else
+				cs_arch arch = CS_ARCH_X86;
+				cs_mode mode = CS_MODE_64;
+#endif
+				if(cs_open(arch, mode, &handle) != CS_ERR_OK)
+					return 0;
+				size_t count = cs_disasm(handle, code, i, ip, 0, &insn);
+				char *pout = out;
+				if(count > 0) {
+					for(size_t j = 0; j < count; i++) {
+						sprintf(pout,"0x%s:\t%s\t\t%s\n", ~Hex(insn[i].address), insn[i].mnemonic, insn[i].op_str);
+						pout += strlen(pout);
+					}
+					cs_free(insn, count);
+				}
+				cs_close(&handle);
+				int sz = strlen(out);
+#endif
 			}
 			adr_t bp0 = GetIP();
 			adr_t bp = bp0 + l;
@@ -400,4 +484,4 @@ void Pdb::StepOut()
 	Unlock();
 }
 
-#endif
+//#endif

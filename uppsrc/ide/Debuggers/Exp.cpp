@@ -1,6 +1,6 @@
 #include "Debuggers.h"
 
-#ifdef PLATFORM_WIN32
+//#ifdef PLATFORM_WIN32
 
 #define LLOG(x)  // DLOG(x)
 
@@ -670,4 +670,4 @@ Pdb::Val Pdb::Exp(CParser& p)
 	return v;
 }
 
-#endif
+//#endif

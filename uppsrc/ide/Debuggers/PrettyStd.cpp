@@ -1,6 +1,6 @@
 #include "Debuggers.h"
 
-#ifdef PLATFORM_WIN32
+//#ifdef PLATFORM_WIN32
 
 void Pdb::PrettyStdString(Pdb::Val val, const Vector<String>& tparam, int64 from, int count, Pdb::Pretty& p)
 {
@@ -275,4 +275,4 @@ void Pdb::PrettyStdAtomic(Pdb::Val val, const Vector<String>& tparam, int64 from
 	p.kind = SINGLE_VALUE;
 }
 
-#endif
+//#endif

@@ -1,6 +1,36 @@
+#ifdef PLATFORM_WIN32
+
 #include <winver.h>
 #include <dbghelp.h>
 #include <psapi.h>
+
+#else
+
+#include <sys/user.h>
+#include <elfutils/libdw.h> // To get the libraries use - sudo apt-get install libelf-dev libdw-dev libcapstone-dev
+
+typedef struct _SYMBOL_INFO {
+	unsigned long   SizeOfStruct;
+	unsigned long   TypeIndex;
+	uint64          Reserved[2];
+	unsigned long   Index;
+	unsigned long   Size;
+	uint64          ModBase;
+	unsigned long   Flags;
+	uint64          Value;
+	uint64          Address;
+	unsigned long   Register;
+	unsigned long   Scope;
+	unsigned long   Tag;
+	unsigned long   NameLen;
+	unsigned long   MaxNameLen;
+	char            Name[1];
+} SYMBOL_INFO, *PSYMBOL_INFO;
+typedef int IMAGEHLP_SYMBOL_TYPE_INFO;
+#define CALLBACK 
+
+#endif
+
 #include "cvconst.h"
 
 #include <plugin/ndisasm/ndisasm.h>
@@ -67,13 +97,13 @@ struct Pdb : Debugger, ParentCtrl {
 		adr_t  address;
 		dword  size;
 		dword  pdbtype;
-
 		FnInfo() { address = size = pdbtype = 0; }
 	};
 
 	enum { UNKNOWN = -99, BOOL1, SINT1, UINT1, SINT2, UINT2, SINT4, UINT4, SINT8, UINT8, FLT, DBL, PFUNC };
 
 	struct Context {
+#ifdef PLATFORM_WIN32
 	#ifdef CPU_64
 		union {
 			CONTEXT context64;
@@ -82,6 +112,65 @@ struct Pdb : Debugger, ParentCtrl {
 	#else
 		CONTEXT context32;
 	#endif
+#else
+	user_regs_struct regs;
+	adr_t GetIP() {
+		#ifdef CPU_64
+		return regs.rip;
+		#else
+		return regs.Eip;
+		#endif
+	}
+	adr_t GetSP() {
+		#ifdef CPU_64
+		return regs.rsp;
+		#else
+		return regs.Esp;
+		#endif
+	}
+	adr_t GetBP() {
+		#ifdef CPU_64
+		return regs.rbp;
+		#else
+		return regs.Ebp;
+		#endif
+	}
+	adr_t GetFlags() {
+		#ifdef CPU_64
+		return regs.eflags;
+		#else
+		return regs.Eflags;
+		#endif
+	}
+	void SetIP(adr_t ip) {
+		#ifdef CPU_64
+		regs.rip = ip;
+		#else
+		regs.Eip = ip;
+		#endif
+	}
+	void SetSP(adr_t sp) {
+		#ifdef CPU_64
+		regs.rsp = sp;
+		#else
+		regs.Esp = sp;
+		#endif
+	}
+	void SetBP(adr_t bp) {
+		#ifdef CPU_64
+		regs.rbp = bp;
+		#else
+		regs.Ebp = bp;
+		#endif
+	}
+	void SetFlags(adr_t f) {
+		#ifdef CPU_64
+		regs.eflags = f;
+		#else
+		regs.Eflags = f;
+		#endif
+	}
+#endif
 	};
 	
 	struct TypeInfo : Moveable<TypeInfo> {
@@ -124,6 +213,10 @@ struct Pdb : Debugger, ParentCtrl {
 		Type() : size(-1), vtbl_typeindex(-1) {}
 
 		adr_t  modbase;
+#ifdef PLATFORM_WIN32
+#else
+		Dwarf_Die die;
+#endif
 
 		String name;
 		int    size;
@@ -185,31 +278,45 @@ struct Pdb : Debugger, ParentCtrl {
 	};
 	
 	struct Thread : Context {
-		HANDLE  hThread;
+		int  hThread;
 		adr_t   sp;
 	};
 	
 	int                         lock;
 	bool                        running;
 	bool                        stop;
+	bool                        terminated;
+	bool                        refreshmodules;
+#ifdef PLATFORM_WIN32
 	HANDLE                      hProcess;
 	HANDLE                      mainThread;
 	DWORD                       processid;
 	DWORD                       hProcessId;
-	DWORD                       mainThreadId;
-	ArrayMap<dword, Thread>     threads;
-	bool                        terminated;
-	bool                        refreshmodules;
-	Vector<ModuleInfo>          module;
 	DEBUG_EVENT                 event;
-	DWORD                       debug_threadid;
 	HWND                        hWnd;
+#else
+	int                         fdProcess;
+	Elf                         *elf; // Executable and Linkable Format(ELF)
+	Dwarf                       *dwarf;
+//	pid_t                       eventPid;
+	adr_t                       baseAddress;
+//	Upp::Thread waitPidThread;
+//	int waitPidStatus;
+//	pid_t waitPidEvent;
+//	bool waitPidCease;
+#endif
+	dword                       mainThreadId;
+	dword                       debug_threadid;
+	ArrayMap<dword, Thread>     threads;
+	Vector<ModuleInfo>          module;
 	VectorMap<adr_t, byte>      bp_set; // breakpoints active for single RunToException
 
 	bool                        clang; // we are in clang toolchain
 	bool                        win64; // debugee is 64-bit, always false in 32-bit exe
 
 	Context                     context;
+	String                      exeFilename;
+	String                      cmdParameters;
 
 	Index<adr_t>                invalidpage;
 	VectorMap<adr_t, MemPg>     mempage;
@@ -304,6 +411,9 @@ struct Pdb : Debugger, ParentCtrl {
 	void       Error(const char *s = NULL);
 
 	String     Hex(adr_t);
+	void       DebugDumpKid(Dwarf_Die *die, unsigned depth, unsigned *cnt, unsigned *disp,bool verbose); // For debug recursion
+	const char* DebugDump(bool verbose = false); // Useful for posix development to dumps the Dwarf data to the LOG
+
 
 // CPU registers
 	uint32 GetRegister32(const Context& ctx, int sym);
@@ -313,18 +423,19 @@ struct Pdb : Debugger, ParentCtrl {
 	uint64     GetCpuRegister(const Context& ctx, int sym);
 
 // debug
-	Context    ReadContext(HANDLE hThread);
-	void       WriteContext(HANDLE hThread, Context& context);
+	Context    ReadContext(int hThread);
+	void       WriteContext(int hThread, Context& context);
 	void       LoadModuleInfo();
 	int        FindModuleIndex(adr_t base);
 	void       UnloadModuleSymbols();
-	void       AddThread(dword dwThreadId, HANDLE hThread);
-	void       RemoveThread(dword dwThreadId);
+	bool       AddThread(dword dwThreadId, int hThread);
+	bool       RemoveThread(dword dwThreadId);
 	void       Lock();
 	void       Unlock();
 	void       ToForeground();
 	bool       RunToException();
 	bool       AddBp(adr_t address);
+	void       LoadDwarfSymbol(Dwarf_Die die, int depth, unsigned *cnt);
 	bool       RemoveBp(adr_t address);
 	bool       RemoveBp();
 	bool       IsBpSet(adr_t address) const { return bp_set.Find(address) >= 0; }
@@ -349,11 +460,11 @@ struct Pdb : Debugger, ParentCtrl {
 
 // sym
 	struct LocalsCtx;
-	static BOOL CALLBACK  EnumLocals(PSYMBOL_INFO pSymInfo, ULONG SymbolSize, PVOID UserContext);
-	static BOOL CALLBACK  EnumGlobals(PSYMBOL_INFO pSymInfo, ULONG SymbolSize, PVOID UserContext);
-	void                  TypeVal(Pdb::Val& v, int typeId, adr_t modbase);
-	String                GetSymName(adr_t modbase, dword typeindex);
+	static bool CALLBACK  EnumLocals(PSYMBOL_INFO pSymInfo, unsigned long  SymbolSize, void* UserContext);
+	static bool CALLBACK  EnumGlobals(PSYMBOL_INFO pSymInfo, unsigned long SymbolSize, void* UserContext);
 	dword                 GetSymInfo(adr_t modbase, dword typeindex, IMAGEHLP_SYMBOL_TYPE_INFO info);
+	String                GetSymName(adr_t modbase, dword typeindex);
+	void                  TypeVal(Pdb::Val& v, int typeId, adr_t modbase);
 	const Type&           GetType(int ti);
 	int                   GetTypeIndex(adr_t modbase, dword typeindex);
 	Val                   GetGlobal(const String& name);
@@ -374,6 +485,12 @@ struct Pdb : Debugger, ParentCtrl {
 	
 	static String FormatString(const String& x) { return AsCString(x, INT_MAX, NULL, CheckUtf8(x) ? 0 : ASCSTRING_OCTALHI); }
 
+#ifdef PLATFORM_WIN32
+#else
+	int                   GetValType(Dwarf_Die& die);
+	bool                  GetTypeVal(Pdb::Val* val, Dwarf_Die kid);
+#endif
+	
 // exp
 	Val        MakeVal(const String& type, adr_t address);
 	void       ThrowError(const char *s);
@@ -560,7 +677,7 @@ struct Pdb : Debugger, ParentCtrl {
 	virtual ~Pdb();
 
 
-	void LoadGlobals(DWORD64 base);
+	void LoadGlobals(uint64 base);
 };
 
 bool EditPDBExpression(const char *title, String& brk, Pdb *pdb);

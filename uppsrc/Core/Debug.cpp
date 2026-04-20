@@ -167,7 +167,7 @@ void  HexDumpData(Stream& s, const void *ptr, int size, bool adr, int maxsize) {
 
 void  HexDump(Stream& s, const void *ptr, int size, int maxsize) {
 	char h[256];
-	snprintf(h, 256, "Memory at 0x%p, size 0x%X = %d\n", ptr, size, size);
+	snprintf(h, 256, "Memory at %p, size 0x%X = %d\n", ptr, size, size);
 	s.Put(h);
 #ifdef PLATFORM_WIN32
 	if(IsBadReadPtr(ptr, size)) {
