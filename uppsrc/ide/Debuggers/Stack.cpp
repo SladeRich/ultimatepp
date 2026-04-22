@@ -103,19 +103,20 @@ Array<Pdb::Frame> Pdb::Backtrace(Thread& ctx, bool single_frame, bool thread_inf
 	#ifdef CPU_64
 	unsigned step = 8;
 	#else
-	unsigned step = 8;
+	unsigned step = 4;
 	#endif
 	uint64 ip = cctx.GetIP();
 	uint64 sp = cctx.GetSP();
 	uint64 fp = cctx.GetBP();
-	LOG("Pdb::Backtrace ip:0x"<<Hex(ip)<<" sp:0x"<<Hex(sp)<<" bp:0x"<<Hex(fp));
+//auto sp1 = sp;
 	while (fp != 0) {
+		LLOG("Pdb::Backtrace ip:0x"<<Hex(ip)<<" sp:0x"<<Hex(sp)<<" bp:0x"<<Hex(fp));
 		bool done = false;
 	  Dwarf_Addr addr = ip - baseAddress;
 		Dwarf_Off off = 0;
 		Dwarf_Off next;
 		size_t hdrSz;
-		LOG("\t Finding functions for address:0x"<<Hex(ip)<<" relative :0x"<<Hex(addr));
+		LLOG("\t Finding functions for address:0x"<<Hex(ip)<<" relative :0x"<<Hex(addr));
 		// Iterate over compilation units (CU)
 		while (dwarf_nextcu(dwarf, off, &next, &hdrSz, NULL, NULL, NULL) == 0) {
 			Dwarf_Die cu;
@@ -128,11 +129,11 @@ Array<Pdb::Frame> Pdb::Backtrace(Thread& ctx, bool single_frame, bool thread_inf
 						bool verbose = false;
 						Dwarf_Die kid;
 						if (dwarf_child(&die, &kid) == 0) {
-							//LOG("Has kids");
+							//LLOG("Has kids");
 						}
 						switch(tag) {
 							case DW_TAG_subprogram: {
-								//LOG("\t Check in address range for "<<dwarf_diename(&die));
+								//LLOG("\t Check in address range for "<<dwarf_diename(&die));
 								if(dwarf_haspc(&die, addr)) {
 									const char *name = dwarf_diename(&die);
 									Dwarf_Addr loAdr=0;
@@ -145,7 +146,7 @@ Array<Pdb::Frame> Pdb::Backtrace(Thread& ctx, bool single_frame, bool thread_inf
 									f.frame = fp;
 									f.stack = sp;
 									f.fn = GetFnInfo(f.pc);
-									LOG("\t\t Added frame p:0x"<<Hex(ip)<<" fp:0x"<<Hex(fp)<<" sp:0x"<<Hex(sp)<< ' '<<name);
+									LLOG("\t\t Added frame p:0x"<<Hex(ip)<<" fp:0x"<<Hex(fp)<<" sp:0x"<<Hex(sp)<< ' '<<name);
 									done = true;
 									if(thread_info) {
 										if(frame.GetCount() > 20)
@@ -192,14 +193,25 @@ Array<Pdb::Frame> Pdb::Backtrace(Thread& ctx, bool single_frame, bool thread_inf
 		if (!done) {
 			break;
 		}
+		// Go next level down the stack
+		#ifdef CPU_ARM
+		ip = ptrace(PTRACE_PEEKDATA, mainThreadId, fp, 0);
+		fp = ptrace(PTRACE_PEEKDATA, mainThreadId, fp - step, 0);
+		#else
 		ip = ptrace(PTRACE_PEEKDATA, mainThreadId, fp + step, 0);
 		fp = ptrace(PTRACE_PEEKDATA, mainThreadId, fp, 0);
-		sp += step;
+		#endif
+		sp = fp + 2*step;
 		cctx.SetIP(ip);
 		cctx.SetSP(sp);
 		cctx.SetBP(fp);
 	};
-	LOG("\t Frame count "<<frame.GetCount());
+//	for (int i=0; i<16; i++) {
+//		auto p = ptrace(PTRACE_PEEKDATA, mainThreadId, sp1, 0);
+//		LLOG("SP 0x"<<Hex(sp1)<<" 0x"<<Hex(p));
+//		sp1 += step;
+//	}
+	LLOG("\t Frame count "<<frame.GetCount());
 #endif
 
 	return frame;

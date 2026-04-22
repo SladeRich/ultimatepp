@@ -134,19 +134,16 @@ bool Pdb::AddBp(adr_t address)
 	// Dwarf ARM implementation
 	uint64 prev;
 	// Read original instruction
-	adr_t adr = address;
-	uint64 peek64 = ptrace(PTRACE_PEEKDATA, mainThreadId, adr, 0);
-	//LLOG("\t Read memory at break point id:"<<mainThreadId<<" 0x"<<Hex(adr)<<" of 0x"<<Hex(peek64));
+	uint64 peek64 = ptrace(PTRACE_PEEKDATA, mainThreadId, address, 0);
+	//LLOG("\t Read memory at break point id:"<<mainThreadId<<" 0x"<<Hex(address)<<" of 0x"<<Hex(peek64));
 	// Insert breakpoint instruction
-	uint64 bp = (~0xffffffff&peek64) | 0xd4200000; // AArch64 uses the BRK #<immediate> instruction 0xD4200000
+	uint64 bp = (~(uint64)0xffffffff&peek64) | 0xd4200000; // AArch64 uses the BRK #<immediate> instruction 0xD4200000
 	prev = 0xffffffff&peek64;
-//	uint64 bp = 0xd4200000; // AArch64 uses the BRK #<immediate> instruction 0xD4200000
-	prev = peek64;
-	if (ptrace(PTRACE_POKEDATA, mainThreadId, adr, bp)==-1) {
-		LLOG("\t Write memory failed id:"<<mainThreadId<<" at 0x"<<Hex(adr)<<" of 0x"<<Hex(bp)<<" - "<<strerror(errno));
+	if (ptrace(PTRACE_POKEDATA, mainThreadId, address, bp)==-1) {
+		LLOG("\t Write memory failed id:"<<mainThreadId<<" at 0x"<<Hex(address)<<" of 0x"<<Hex(bp)<<" - "<<strerror(errno));
 		return false;
 	}
-	LLOG("\t Write memory at break point id:"<<mainThreadId<<" 0x"<<Hex(adr)<<" to 0x"<<Hex(bp)<<" previous was 0x"<<Hex(prev));
+	LLOG("\t Write memory at break point id:"<<mainThreadId<<" 0x"<<Hex(address)<<" to 0x"<<Hex(bp)<<" previous was 0x"<<Hex(prev));
 
 #else
 
@@ -156,7 +153,7 @@ bool Pdb::AddBp(adr_t address)
 	uint64 peek64 = ptrace(PTRACE_PEEKDATA, mainThreadId, address, 0);
 	//LLOG("\t Read memory at break point id:"<<mainThreadId<<" 0x"<<Hex(address)<<" of 0x"<<Hex((byte)peek64));
 	// Insert breakpoint instruction
-	uint64 int3 = (~0xff&peek64) | 0xcc;
+	uint64 int3 = (~(uint64)0xff&peek64) | 0xcc;
 	prev = (byte)peek64;
 	if (ptrace(PTRACE_POKEDATA, mainThreadId, address, int3)==-1) {
 		LLOG("\t Write memory failed id:"<<mainThreadId<<" at 0x"<<Hex(address)<<" of 0x"<<Hex(int3)<<" - "<<strerror(errno));
@@ -191,8 +188,7 @@ bool Pdb::RemoveBp(adr_t address)
 
 	// Dwarf ARM implementation
 	int64 peek64 = ptrace(PTRACE_PEEKDATA, mainThreadId, address, 0);
-	uint64 poke64 = (~0xffffffffff&peek64) | bp_set[pos];
-//	uint64 poke64 = bp_set[pos];
+	uint64 poke64 = (~(uint64)0xffffffffff&peek64) | bp_set[pos];
 	if(ptrace(PTRACE_POKEDATA, mainThreadId, address, poke64, NULL)==-1) {
 		LLOG("\t Poke id:"<<mainThreadId<<" at 0x"<<Hex(address)<<" of 0x"<<Hex(poke64)<<" failed - "<<strerror(errno));
 		return false;
@@ -203,7 +199,7 @@ bool Pdb::RemoveBp(adr_t address)
 
 	// Dwarf implementation
 	int64 peek64 = ptrace(PTRACE_PEEKDATA, mainThreadId, address, 0);
-	uint64 poke64 = (~0xff&peek64) | ((byte)bp_set[pos]);
+	uint64 poke64 = (~(uint64)0xff&peek64) | ((byte)bp_set[pos]);
 	if(ptrace(PTRACE_POKEDATA, mainThreadId, address, poke64, NULL)==-1) {
 		LLOG("\t Poke id:"<<mainThreadId<<" at 0x"<<Hex(address)<<" of 0x"<<Hex(poke64)<<" failed - "<<strerror(errno));
 		return false;
@@ -236,22 +232,21 @@ bool Pdb::RemoveBp()
 
 			// Dwarf ARM implementation
 			int64 peek64 = ptrace(PTRACE_PEEKDATA, mainThreadId, address, 0);
-			uint64 poke64 = (~0xffffffff&peek64) | bp_set[i];
-//			uint64 poke64 = bp_set[i];
+			uint64 poke64 = (~(uint64)0xffffffff&peek64) | bp_set[i];
 			if(ptrace(PTRACE_POKEDATA, mainThreadId, address, poke64, NULL)==-1) {
 				LLOG("\t Poke id:"<<mainThreadId<<" at 0x"<<Hex(address)<<" index:"<<i<<" of 0x"<<Hex(poke64)<<" failed - "<<strerror(errno));
 			}
-			LLOG("\t Restore memory at break point 0x"<<Hex(address)<<" of 0x"<<Hex(bp_set[i]));
+			LLOG("\t Restore memory at break point 0x"<<Hex(address)<<" to 0x"<<Hex(bp_set[i]));
 
 #else
 
 			// Dwarf implementation
 			uint64 peek64 = ptrace(PTRACE_PEEKDATA, mainThreadId, address, 0);
-			uint64 poke64 = (~0xff&peek64) | bp_set[i];
+			uint64 poke64 = (~(uint64)0xff&peek64) | bp_set[i];
 			if(ptrace(PTRACE_POKEDATA, mainThreadId, address, poke64, NULL)==-1) {
 				LLOG("\t Poke id:"<<mainThreadId<<" at 0x"<<Hex(address)<<" index:"<<i<<" of 0x"<<Hex(poke64)<<" failed - "<<strerror(errno));
 			}
-			LLOG("\t Restore memory at break point 0x"<<Hex(address)<<" of 0x"<<Hex(bp_set[i]));
+			LLOG("\t Restore memory at break point 0x"<<Hex(address)<<" to 0x"<<Hex(bp_set[i]));
 
 #endif
 
@@ -819,7 +814,7 @@ bool Pdb::RunToException()
 				if(stopSig==SIGCHLD) { // SIGCHLD(17)
 					ptrace(PTRACE_GETSIGINFO, pid, NULL, &info);
 					DR_LOG("\t Got SIGCHLD("<<info.si_signo<<") "<<" code:"<<info.si_code);
-//					LLOG("\t Got SIGCHLD("<<info.si_signo<<") "<<" code:"<<info.si_code);
+					LLOG("\t Got SIGCHLD("<<info.si_signo<<") "<<" code:"<<info.si_code);
 //					ToForeground();
 //					BeepError();
 //					String desc = "Debug failed to run";
@@ -832,8 +827,8 @@ bool Pdb::RunToException()
 //						LLOG("Exit thread: " << pid);
 //					}
 //					LLOG("<<< Debugee failed to run " << pid);
-					ptrace(PTRACE_CONT, pid, NULL, NULL);
-					return false; // It has failed to run, it is dead
+//					ptrace(PTRACE_CONT, pid, NULL, NULL);
+//					return false; // It has failed to run, it is dead
 				}
 			}
 			else if(WIFSIGNALED(status)) {
