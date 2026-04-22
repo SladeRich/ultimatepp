@@ -33,7 +33,7 @@ int    Pdb::Byte(adr_t addr)
 	}
 	LLOG("ReadProcessMemory " << Hex(addr) << ": " << GetLastErrorMessage());
 #else
-	// NEVER(); // Todo Dwarf implementation - done?
+	// Dwarf implementation
 	errno = 0;
 	byte data[1024];
 	adr_t adr = (addr & ~1023);

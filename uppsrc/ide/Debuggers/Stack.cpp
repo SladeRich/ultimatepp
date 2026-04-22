@@ -98,7 +98,7 @@ Array<Pdb::Frame> Pdb::Backtrace(Thread& ctx, bool single_frame, bool thread_inf
 	
 #else
 
-	//NEVER(); // Todo Dwarf implementation - done?
+	// Dwarf implementation
 	// Get Instruction Pointer (IP) and Stack Pointer (SP)
 	#ifdef CPU_64
 	unsigned step = 8;

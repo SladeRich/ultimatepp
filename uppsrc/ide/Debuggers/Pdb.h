@@ -113,64 +113,169 @@ struct Pdb : Debugger, ParentCtrl {
 		CONTEXT context32;
 	#endif
 #else
-	user_regs_struct regs;
-	adr_t GetIP() {
-		#ifdef CPU_64
-		return regs.rip;
-		#else
-		return regs.Eip;
-		#endif
-	}
-	adr_t GetSP() {
-		#ifdef CPU_64
-		return regs.rsp;
-		#else
-		return regs.Esp;
-		#endif
-	}
-	adr_t GetBP() {
-		#ifdef CPU_64
-		return regs.rbp;
-		#else
-		return regs.Ebp;
-		#endif
-	}
-	adr_t GetFlags() {
-		#ifdef CPU_64
-		return regs.eflags;
-		#else
-		return regs.Eflags;
-		#endif
-	}
-	void SetIP(adr_t ip) {
-		#ifdef CPU_64
-		regs.rip = ip;
-		#else
-		regs.Eip = ip;
-		#endif
-	}
-	void SetSP(adr_t sp) {
-		#ifdef CPU_64
-		regs.rsp = sp;
-		#else
-		regs.Esp = sp;
-		#endif
-	}
-	void SetBP(adr_t bp) {
-		#ifdef CPU_64
-		regs.rbp = bp;
-		#else
-		regs.Ebp = bp;
-		#endif
-	}
-	void SetFlags(adr_t f) {
-		#ifdef CPU_64
-		regs.eflags = f;
-		#else
-		regs.Eflags = f;
-		#endif
-	}
+		user_regs_struct regs;
 #endif
+
+		adr_t GetIP() {
+			#ifdef PLATFORM_WIN32
+			#ifdef CPU_64
+			if(win64)
+				return context.context64.Rip;
+			else
+			#endif
+			return context.context32.Eip;
+			#else
+			#ifdef CPU_ARM
+			return regs.pc;
+			#else
+			#ifdef CPU_64
+			return regs.rip;
+			#else
+			return regs.Eip;
+			#endif
+			#endif
+			#endif
+		}
+		adr_t GetSP() {
+			#ifdef PLATFORM_WIN32
+			#ifdef CPU_64
+			if(win64)
+				return context.context64.Rsp;
+			else
+			#endif
+			return context.context32.Esp;
+			#else
+			#ifdef CPU_ARM
+			return regs.sp;
+			#else
+			#ifdef CPU_64
+			return regs.rsp;
+			#else
+			return regs.Esp;
+			#endif
+			#endif
+			#endif
+		}
+		adr_t GetBP() {
+			#ifdef PLATFORM_WIN32
+			#ifdef CPU_64
+			if(win64)
+				return context.context64.Rbp;
+			else
+			#endif
+			return context.context32.Ebp;
+			#else
+			#ifdef CPU_ARM
+			return regs.regs[29]; // AArch64 uses register X29 as the frame pointer, or R11 for 32 bit systems
+			#else
+			#ifdef CPU_64
+			return regs.rbp;
+			#else
+			return regs.Ebp;
+			#endif
+			#endif
+			#endif
+		}
+		adr_t GetFlags() {
+			#ifdef PLATFORM_WIN32
+			#ifdef CPU_64
+			if(win64)
+				return context.context64.EFlags;
+			else
+			#endif
+			return context.context32.EFlags;
+			#else
+			#ifdef CPU_ARM
+			return regs.pstate;
+			#else
+			#ifdef CPU_64
+			return regs.eflags;
+			#else
+			return regs.Eflags;
+			#endif
+			#endif
+			#endif
+		}
+		void SetIP(adr_t ip) {
+			#ifdef PLATFORM_WIN32
+			#ifdef CPU_64
+			if(win64)
+				context.context64.Rip = ip;
+			else
+			#endif
+			context.context32.Eip = (DWORD)ip;
+			#else
+			#ifdef CPU_ARM
+			regs.pc = ip;
+			#else
+			#ifdef CPU_64
+			regs.rip = ip;
+			#else
+			regs.Eip = ip;
+			#endif
+			#endif
+			#endif
+		}
+		void SetSP(adr_t sp) {
+			#ifdef PLATFORM_WIN32
+			#ifdef CPU_64
+			if(win64)
+				context.context64.Rsp = sp;
+			else
+			#endif
+			context.context32.Esp = (DWORD)sp;
+			#else
+			#ifdef CPU_ARM
+			regs.sp = sp;
+			#else
+			#ifdef CPU_64
+			regs.rsp = sp;
+			#else
+			regs.Esp = sp;
+			#endif
+			#endif
+			#endif
+		}
+		void SetBP(adr_t bp) {
+			#ifdef PLATFORM_WIN32
+			#ifdef CPU_64
+			if(win64)
+				context.context64.Rbp = bp;
+			else
+			#endif
+			context.context32.Ebp = (DWORD)bp;
+			#else
+			#ifdef CPU_ARM
+			regs.regs[29] = bp; // AArch64 uses register X29 as the frame pointer, or R11 for 32 bit systems
+			#else
+			#ifdef CPU_64
+			regs.rbp = bp;
+			#else
+			regs.Ebp = bp;
+			#endif
+			#endif
+			#endif
+		}
+		void SetFlags(adr_t f) {
+			#ifdef PLATFORM_WIN32
+			#ifdef CPU_64
+			if(win64)
+				context.context64.EFlags = f;
+			else
+			#endif
+			context.context32.EFlags = (DWORD)f;
+			#else
+			#ifdef CPU_ARM
+			regs.pstate = f;
+			#else
+			#ifdef CPU_64
+			regs.eflags = f;
+			#else
+			regs.Eflags = f;
+			#endif
+			#endif
+			#endif
+		}
 	};
 	
 	struct TypeInfo : Moveable<TypeInfo> {
@@ -278,7 +383,11 @@ struct Pdb : Debugger, ParentCtrl {
 	};
 	
 	struct Thread : Context {
+#ifdef PLATFORM_WIN32
+		HANDLE  hThread;
+#else
 		int  hThread;
+#endif
 		adr_t   sp;
 	};
 	
@@ -298,18 +407,13 @@ struct Pdb : Debugger, ParentCtrl {
 	int                         fdProcess;
 	Elf                         *elf; // Executable and Linkable Format(ELF)
 	Dwarf                       *dwarf;
-//	pid_t                       eventPid;
 	adr_t                       baseAddress;
-//	Upp::Thread waitPidThread;
-//	int waitPidStatus;
-//	pid_t waitPidEvent;
-//	bool waitPidCease;
 #endif
 	dword                       mainThreadId;
 	dword                       debug_threadid;
 	ArrayMap<dword, Thread>     threads;
 	Vector<ModuleInfo>          module;
-	VectorMap<adr_t, byte>      bp_set; // breakpoints active for single RunToException
+	VectorMap<adr_t, uint64>    bp_set; // breakpoints active for single RunToException
 
 	bool                        clang; // we are in clang toolchain
 	bool                        win64; // debugee is 64-bit, always false in 32-bit exe
@@ -411,7 +515,10 @@ struct Pdb : Debugger, ParentCtrl {
 	void       Error(const char *s = NULL);
 
 	String     Hex(adr_t);
+#ifdef PLATFORM_WIN32
+#else
 	void       DebugDumpKid(Dwarf_Die *die, unsigned depth, unsigned *cnt, unsigned *disp,bool verbose); // For debug recursion
+#endif
 	const char* DebugDump(bool verbose = false); // Useful for posix development to dumps the Dwarf data to the LOG
 
 
@@ -435,7 +542,6 @@ struct Pdb : Debugger, ParentCtrl {
 	void       ToForeground();
 	bool       RunToException();
 	bool       AddBp(adr_t address);
-	void       LoadDwarfSymbol(Dwarf_Die die, int depth, unsigned *cnt);
 	bool       RemoveBp(adr_t address);
 	bool       RemoveBp();
 	bool       IsBpSet(adr_t address) const { return bp_set.Find(address) >= 0; }

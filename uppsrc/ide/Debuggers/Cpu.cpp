@@ -1,5 +1,19 @@
 #include "Debuggers.h"
 
+#ifdef CPU_ARM
+
+uint64 Pdb::GetRegister64(const Context& ctx, int sym)
+{
+	switch(sym) {
+#define CPU_REG(sym, context_var, reg_var, kind, name, flags) case sym: return ctx.regs.reg_var;
+		#include "arm.cpu"
+#undef CPU_REG
+	}
+	return 0;
+}
+
+#else
+
 #ifdef PLATFORM_WIN32
 
 uint32 Pdb::GetRegister32(const Context& ctx, int sym)
@@ -52,6 +66,7 @@ uint32 Pdb::GetRegister32(const Context& ctx, int sym)
 
 #endif
 
+#endif
 
 #endif
 
@@ -104,5 +119,3 @@ uint64 Pdb::GetCpuRegister(const Context& ctx, int sym)
 	}
 	return val;
 }
-
-//#endif

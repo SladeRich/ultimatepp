@@ -4,7 +4,6 @@
 #else
 #include <sys/ptrace.h>
 #include <sys/wait.h>
-#include <sys/reg.h>
 #include <dwarf.h>
 #endif
 
@@ -41,8 +40,6 @@ void Pdb::UnloadModuleSymbols()
 #ifdef PLATFORM_WIN32
 			SymUnloadModule64(hProcess, f.base);
 			LLOG("Unloaded symbols for " << f.path << ' ' << Hex(module[i].base) << '/' << hProcess);
-#else
-			//NEVER(); // Todo Dwarf implementation
 #endif
 		}
 	}
@@ -62,7 +59,6 @@ void Pdb::LoadModuleInfo()
 	fninfo_cache.Clear();
 
 #ifdef PLATFORM_WIN32
-
 	ModuleInfo f;
 	dword cb = 1;
 	HMODULE  h;
@@ -108,9 +104,6 @@ void Pdb::LoadModuleInfo()
 	}
 	UnloadModuleSymbols();
 	module = pick(nm);
-
-#else
-	//NEVER(); // Todo Dwarf implementation
 #endif
 
 	refreshmodules = false;
@@ -121,8 +114,10 @@ bool Pdb::AddBp(adr_t address)
 	LLOG("AddBp: 0x" << Hex(address));
 	if(bp_set.Find(address) >= 0)
 		return true;
-	byte prev;
+
 #ifdef PLATFORM_WIN32
+
+	byte prev;
 	if(!ReadProcessMemory(hProcess, (LPCVOID) address, &prev, 1, NULL))
 		return false;
 	LLOG("ReadProcessMemory OK");
@@ -131,29 +126,48 @@ bool Pdb::AddBp(adr_t address)
 		return false;
 	LLOG("WriteProcessMemory OK");
 //	FlushInstructionCache (hProcess, (LPCVOID)address, 1);
+
 #else
-	// Todo Dwarf implementation - done?
+
+#ifdef CPU_ARM
+
+	// Dwarf ARM implementation
+	uint64 prev;
 	// Read original instruction
 	adr_t adr = address;
-	#ifdef CPU_64
-	unsigned push = 8*(adr&0x7);
-	adr &= ~0x7;
-	#else
-	unsigned push = 8*(adr&0x3);
-	adr &= ~0x3;
-	#endif
 	uint64 peek64 = ptrace(PTRACE_PEEKDATA, mainThreadId, adr, 0);
-	LLOG("\t Read memory at break point id:"<<mainThreadId<<" 0x"<<Hex(adr)<<" of 0x"<<Hex(peek64));
+	//LLOG("\t Read memory at break point id:"<<mainThreadId<<" 0x"<<Hex(adr)<<" of 0x"<<Hex(peek64));
 	// Insert breakpoint instruction
-	uint64 mask = (uint64)0xff<<push;
-	uint64 int3 = (~mask&peek64) | ((uint64)0xcc<<push);
-	prev = (byte)(peek64>>push);
-	if (ptrace(PTRACE_POKEDATA, mainThreadId, adr, int3)==-1) {
-		LLOG("\t Write memory failed id:"<<mainThreadId<<" at 0x"<<Hex(adr)<<" of 0x"<<Hex(int3)<<" - "<<strerror(errno));
+	uint64 bp = (~0xffffffff&peek64) | 0xd4200000; // AArch64 uses the BRK #<immediate> instruction 0xD4200000
+	prev = 0xffffffff&peek64;
+//	uint64 bp = 0xd4200000; // AArch64 uses the BRK #<immediate> instruction 0xD4200000
+	prev = peek64;
+	if (ptrace(PTRACE_POKEDATA, mainThreadId, adr, bp)==-1) {
+		LLOG("\t Write memory failed id:"<<mainThreadId<<" at 0x"<<Hex(adr)<<" of 0x"<<Hex(bp)<<" - "<<strerror(errno));
 		return false;
 	}
-	LLOG("\t Write memory at break point id:"<<mainThreadId<<" 0x"<<Hex(adr)<<" to 0x"<<Hex(int3));
+	LLOG("\t Write memory at break point id:"<<mainThreadId<<" 0x"<<Hex(adr)<<" to 0x"<<Hex(bp)<<" previous was 0x"<<Hex(prev));
+
+#else
+
+	// Dwarf implementation
+	uint64 prev;
+	// Read original instruction
+	uint64 peek64 = ptrace(PTRACE_PEEKDATA, mainThreadId, address, 0);
+	//LLOG("\t Read memory at break point id:"<<mainThreadId<<" 0x"<<Hex(address)<<" of 0x"<<Hex((byte)peek64));
+	// Insert breakpoint instruction
+	uint64 int3 = (~0xff&peek64) | 0xcc;
+	prev = (byte)peek64;
+	if (ptrace(PTRACE_POKEDATA, mainThreadId, address, int3)==-1) {
+		LLOG("\t Write memory failed id:"<<mainThreadId<<" at 0x"<<Hex(address)<<" of 0x"<<Hex(int3)<<" - "<<strerror(errno));
+		return false;
+	}
+	LLOG("\t Write memory at break point id:"<<mainThreadId<<" 0x"<<Hex(address)<<" to 0x"<<Hex(int3)<<" previous was 0x"<<Hex(prev));
+	
 #endif
+
+#endif
+
 	bp_set.Put(address, prev);
 	return true;
 }
@@ -164,63 +178,86 @@ bool Pdb::RemoveBp(adr_t address)
 	int pos = bp_set.Find(address);
 	if(pos < 0)
 		return true;
+
 #ifdef PLATFORM_WIN32
+
 	if(!WriteProcessMemory(hProcess, (LPVOID)address, &bp_set[pos], 1, NULL))
 		return false;
 	FlushInstructionCache(hProcess, (LPCVOID)address, 1);
+
 #else
-	// Todo Dwarf implementation - done?
-	adr_t adr = address;
-	#ifdef CPU_64
-	unsigned push = 8*(address&0x7);
-	adr &= ~0x7;
-	#else
-	unsigned push = 8*(address&0x3);
-	adr &= ~0x3;
-	#endif
-	uint64 peek64 = ptrace(PTRACE_PEEKDATA, mainThreadId, adr, 0);
-	uint64 mask = (uint64)0xff<<push;
-	uint64 poke64 = (~mask&peek64) | ((uint64)bp_set[pos]<<push);
-	if(ptrace(PTRACE_POKEDATA, mainThreadId, adr, poke64, NULL)==-1) {
-		LLOG("\t Poke id:"<<mainThreadId<<" at 0x"<<Hex(adr)<<" of 0x"<<Hex(poke64)<<" failed - "<<strerror(errno));
+
+#ifdef CPU_ARM
+
+	// Dwarf ARM implementation
+	int64 peek64 = ptrace(PTRACE_PEEKDATA, mainThreadId, address, 0);
+	uint64 poke64 = (~0xffffffffff&peek64) | bp_set[pos];
+//	uint64 poke64 = bp_set[pos];
+	if(ptrace(PTRACE_POKEDATA, mainThreadId, address, poke64, NULL)==-1) {
+		LLOG("\t Poke id:"<<mainThreadId<<" at 0x"<<Hex(address)<<" of 0x"<<Hex(poke64)<<" failed - "<<strerror(errno));
 		return false;
 	}
-	LLOG("\t Restore memory at break point 0x"<<Hex(adr)<<" to 0x"<<Hex(poke64));
+	LLOG("\t Restore memory at break point 0x"<<Hex(address)<<" to 0x"<<Hex(bp_set[pos]));
+
+#else
+
+	// Dwarf implementation
+	int64 peek64 = ptrace(PTRACE_PEEKDATA, mainThreadId, address, 0);
+	uint64 poke64 = (~0xff&peek64) | ((byte)bp_set[pos]);
+	if(ptrace(PTRACE_POKEDATA, mainThreadId, address, poke64, NULL)==-1) {
+		LLOG("\t Poke id:"<<mainThreadId<<" at 0x"<<Hex(address)<<" of 0x"<<Hex(poke64)<<" failed - "<<strerror(errno));
+		return false;
+	}
+	LLOG("\t Restore memory at break point 0x"<<Hex(address)<<" to 0x"<<Hex(bp_set[pos]));
+
 #endif
+
+#endif
+
 	bp_set.Unlink(pos);
 	return true;
 }
 
 bool Pdb::RemoveBp()
 {
-	LLOG("RemoveBp: all");
+	LLOG("RemoveBp: all " << bp_set.GetCount());
 	for(int i = bp_set.GetCount(); --i >= 0;)
 		if(!bp_set.IsUnlinked(i)) {
 			adr_t address = bp_set.GetKey(i);
+
 #ifdef PLATFORM_WIN32
 			if(!WriteProcessMemory(hProcess, (LPVOID)address, &bp_set[i], 1, NULL))
 				return false;
 			FlushInstructionCache(hProcess, (LPCVOID)address, 1);
-			bp_set.Unlink(i);
+
 #else
-			// Todo Dwarf implementation - done?
-			adr_t adr = address;
-			#ifdef CPU_64
-			unsigned push = 8*(address&0x7);
-			adr &= ~0x7;
-			#else
-			unsigned push = 8*(address&0x3);
-			adr &= ~0x3;
-			#endif
-			uint64 peek64 = ptrace(PTRACE_PEEKDATA, mainThreadId, adr, 0);
-			uint64 mask = (uint64)0xff<<push;
-			uint64 poke64 = (~mask&peek64) | ((uint64)bp_set[i]<<push);
-			if(ptrace(PTRACE_POKEDATA, mainThreadId, adr, poke64, NULL)==-1) {
-				LLOG("\t Poke id:"<<mainThreadId<<" at 0x"<<Hex(adr)<<" index:"<<i<<" of 0x"<<Hex(bp_set[i])<<" failed - "<<strerror(errno));
+
+#ifdef CPU_ARM
+
+			// Dwarf ARM implementation
+			int64 peek64 = ptrace(PTRACE_PEEKDATA, mainThreadId, address, 0);
+			uint64 poke64 = (~0xffffffff&peek64) | bp_set[i];
+//			uint64 poke64 = bp_set[i];
+			if(ptrace(PTRACE_POKEDATA, mainThreadId, address, poke64, NULL)==-1) {
+				LLOG("\t Poke id:"<<mainThreadId<<" at 0x"<<Hex(address)<<" index:"<<i<<" of 0x"<<Hex(poke64)<<" failed - "<<strerror(errno));
 			}
-			LLOG("\t Restore memory at break point 0x"<<Hex(adr)<<" of 0x"<<Hex(poke64));
-			bp_set.Unlink(i);
+			LLOG("\t Restore memory at break point 0x"<<Hex(address)<<" of 0x"<<Hex(bp_set[i]));
+
+#else
+
+			// Dwarf implementation
+			uint64 peek64 = ptrace(PTRACE_PEEKDATA, mainThreadId, address, 0);
+			uint64 poke64 = (~0xff&peek64) | bp_set[i];
+			if(ptrace(PTRACE_POKEDATA, mainThreadId, address, poke64, NULL)==-1) {
+				LLOG("\t Poke id:"<<mainThreadId<<" at 0x"<<Hex(address)<<" index:"<<i<<" of 0x"<<Hex(poke64)<<" failed - "<<strerror(errno));
+			}
+			LLOG("\t Restore memory at break point 0x"<<Hex(address)<<" of 0x"<<Hex(bp_set[i]));
+
 #endif
+
+#endif
+			bp_set.Unlink(i);
+
 		}
 	bp_set.Clear();
 	return true;
@@ -235,9 +272,7 @@ void Pdb::SyncFrameButtons()
 
 void Pdb::Lock()
 {
-DLOG("Lock");
 	if(lock == 0) {
-DLOG("Locked");
 		IdeHidePtr();
 		IdeDebugLock();
 		watches.Disable();
@@ -254,10 +289,8 @@ DLOG("Locked");
 
 void Pdb::Unlock()
 {
-DLOG("Unlock");
 	lock--;
 	if(lock == 0) {
-DLOG("Unlocked");
 		IdeDebugUnLock();
 		watches.Enable();
 		locals.Enable();
@@ -304,16 +337,29 @@ Pdb::Context Pdb::ReadContext(int hThread)
 
 #else
 
-	//NEVER(); // Todo Dwarf implementation done?
-	ptrace(PTRACE_GETREGS, hThread, NULL, &r);
+#ifdef CPU_ARM
+
+	// Dwarf ARM implementation
+	struct iovec iov;
+	iov.iov_base = &r.regs;
+	iov.iov_len = sizeof(r.regs);
+	ptrace(PTRACE_GETREGSET, hThread, (void*)NT_PRSTATUS, &iov);
+
+#else
+
+	// Dwarf implementation
+	ptrace(PTRACE_GETREGS, hThread, NULL, &r.regs);
+
 #endif
-	LLOG("ReadContext hThread:"<<hThread<<" rax:0x"<<Hex(r.regs.rax)<<" rip:0x"<<Hex(r.regs.rip)<<" rsp:0x"<<Hex(r.regs.rsp)<<" eflags:0x"<<Hex(r.regs.eflags));
+
+#endif
+	LLOG("ReadContext hThread:"<<hThread<<" IP:0x"<<Hex(r.GetIP())<<" SP:0x"<<Hex(r.GetSP())<<" flags:0x"<<Hex(r.GetFlags()));
 	return r;
 }
 
 void Pdb::WriteContext(int hThread, Context& context)
 {
-	DR_LOG("WriteContext");
+	LLOG("WriteContext hThread:"<<hThread<<" IP:0x"<<Hex(context.GetIP())<<" SP:0x"<<Hex(context.GetSP())<<" BP:0x"<<Hex(context.GetBP()));
 
 #ifdef PLATFORM_WIN32
 
@@ -345,14 +391,27 @@ void Pdb::WriteContext(int hThread, Context& context)
 
 #else
 
-	//NEVER(); // Todo Dwarf implementation done?
-	DR_LOG("WriteContext");
-	LLOG("WriteContext hThread:"<<hThread<<" IP:0x"<<Hex(context.GetIP())<<" SP:0x"<<Hex(context.GetSP())<<" BP:0x"<<Hex(context.GetBP()));
-	DLOG("WriteContext hThread:"<<hThread<<" rax:0x"<<Hex(context.regs.rax)<<" rip:0x"<<Hex(context.GetIP())<<" rsp:0x"<<Hex(context.GetSP())<<" eflags:0x"<<Hex(context.regs.eflags));
+#ifdef CPU_ARM
+
+	// Dwarf implementation
+	struct iovec iov;
+	iov.iov_base = &context.regs;
+	iov.iov_len = sizeof(context.regs);
+	if(ptrace(PTRACE_SETREGSET, hThread, (void*)NT_PRSTATUS, &iov)==-1) {
+		LLOG("Pdb::WriteContext PTRACE_SETREGSET id:"<<hThread<<" failed - "<<strerror(errno));
+		Error("SetThreadContext failed");
+	}
+
+#else
+
+	// Dwarf implementation
 	if(ptrace(PTRACE_SETREGS, hThread, NULL, &context.regs)==-1) {
 		LLOG("Pdb::WriteContext PTRACE_SETREGS id:"<<hThread<<" failed - "<<strerror(errno));
 		Error("SetThreadContext failed");
 	}
+	
+#endif
+
 #endif
 }
 
@@ -364,19 +423,7 @@ bool Pdb::AddThread(dword dwThreadId, int hThread)
 	Thread& f = threads.GetAdd(dwThreadId);
 	// Retrive "base-level" stack-pointer, to have limit for stackwalks:
 	Context c = ReadContext(hThread);
-#ifdef PLATFORM_WIN32
-#ifdef CPU_64
-	f.sp = win64 ? c.context64.Rsp : c.context32.Esp;
-#else
-	f.sp = c.context32.Esp;
-#endif
-#else
-#ifdef CPU_64
-	f.sp = c.regs.rsp;
-#else
-	f.sp = c.regs.esp;
-#endif
-#endif
+	f.sp = c.GetSP();
 	f.hThread = hThread;
 	LLOG("Adding thread " << dwThreadId << ", Thread SP: 0x" << Hex(f.sp) << ", handle: 0x" << FormatIntHex((dword)(uintptr_t)(hThread)));
 	return true;
@@ -390,8 +437,6 @@ bool Pdb::RemoveThread(dword dwThreadId)
 		LLOG("Closing thread " << dwThreadId << ", handle: 0x" << FormatIntHex((dword)(uintptr_t)(f.hThread)));
 #ifdef PLATFORM_WIN32
 		CloseHandle(f.hThread);
-#else
-		//NEVER(); // Todo Dwarf implementation
 #endif
 		threads.Remove(q);
 		return true;
@@ -630,7 +675,7 @@ bool Pdb::RunToException()
 
 #else
 
-		// Todo Dwarf implementation - done
+		// Dwarf implementation
 		int status;
 		pid_t pid = waitpid(mainThreadId, &status, WNOHANG|__WALL|__WCLONE); // Wait for the child debugee to stop
 		if (pid>0) {
@@ -730,7 +775,14 @@ bool Pdb::RunToException()
 								ip--;
 								LLOG("\t SIGTRAP("<<info.si_signo<<") breakpoint - moved address back from ip:0x"<<Hex((ip+1))<<" to 0x"<<Hex(ip));
 								context.SetIP(ip);
+								#ifdef CPU_ARM
+								struct iovec iov;
+								iov.iov_base = &context.regs;
+								iov.iov_len = sizeof(context.regs);
+								ptrace(PTRACE_SETREGSET, debug_threadid, (void*)NT_PRSTATUS, &iov);
+								#else
 								ptrace(PTRACE_SETREGS, debug_threadid, NULL, &context.regs);
+								#endif
 							}
 						}
 						break_running = false;
@@ -767,19 +819,19 @@ bool Pdb::RunToException()
 				if(stopSig==SIGCHLD) { // SIGCHLD(17)
 					ptrace(PTRACE_GETSIGINFO, pid, NULL, &info);
 					DR_LOG("\t Got SIGCHLD("<<info.si_signo<<") "<<" code:"<<info.si_code);
-					LLOG("\t Got SIGCHLD("<<info.si_signo<<") "<<" code:"<<info.si_code);
-					ToForeground();
-					BeepError();
-					String desc = "Debug failed to run";
-					if (info.si_errno!=0)
-						desc << " - " << strerror(info.si_errno);
-					Prompt(Ctrl::GetAppName(), CtrlImg::error(), desc, t_("OK"));
-					Stop();
-					if (RemoveThread(pid)) {
-						DR_LOG("Exit thread: " << pid);
-						LLOG("Exit thread: " << pid);
-					}
-					LLOG("<<< Debugee failed to run" << pid);
+//					LLOG("\t Got SIGCHLD("<<info.si_signo<<") "<<" code:"<<info.si_code);
+//					ToForeground();
+//					BeepError();
+//					String desc = "Debug failed to run";
+//					if (info.si_errno!=0)
+//						desc << " - " << strerror(info.si_errno);
+//					Prompt(Ctrl::GetAppName(), CtrlImg::error(), desc, t_("OK"));
+//					Stop();
+//					if (RemoveThread(pid)) {
+//						DR_LOG("Exit thread: " << pid);
+//						LLOG("Exit thread: " << pid);
+//					}
+//					LLOG("<<< Debugee failed to run " << pid);
 					ptrace(PTRACE_CONT, pid, NULL, NULL);
 					return false; // It has failed to run, it is dead
 				}
@@ -837,7 +889,7 @@ void Pdb::WriteContext()
 #ifdef PLATFORM_WIN32
 	WriteContext(threads.Get(event.dwThreadId).hThread, context);
 #else
-	//NEVER(); // Todo Dwarf implementation?
+	// Dwarf implementation
 	WriteContext(threads.Get(debug_threadid).hThread, context);
 #endif
 }
@@ -868,7 +920,7 @@ bool Pdb::SingleStep()
 
 #else
 
-	// Todo Dwarf implementation - done?
+	// Dwarf implementation
 	if (ptrace(PTRACE_SINGLESTEP, mainThreadId, NULL, NULL)==-1) {
 		LOG("ptrace PTRACE_SINGLESTEP failed ID:"<<mainThreadId<<" - "<<strerror(errno));
 		return false;
@@ -886,7 +938,7 @@ bool Pdb::Continue()
 	LLOG("** Continue "<<event.dwProcessId<<" "<<event.dwThreadId);
 	ContinueDebugEvent(event.dwProcessId, event.dwThreadId, DBG_CONTINUE);
 #else
-	// Todo Dwarf implementation - done?
+	// Dwarf implementation
 	LLOG("*** Continue "<<debug_threadid);
 	ptrace(PTRACE_CONT, debug_threadid, NULL, NULL);
 #endif
@@ -916,7 +968,7 @@ void Pdb::BreakRunning() //TODO: Fix in wow64?
 		else
 			Exclamation("Operation is not supported on this OS");
 #else
-	//NEVER(); // Todo Dwarf implementation - done?
+	// Todo Dwarf implementation
 	LLOG("Pdb::BreakRunning mainThreadId:"<<mainThreadId);
 	
 errno = 0 ;

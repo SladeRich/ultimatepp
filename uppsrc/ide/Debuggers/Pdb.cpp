@@ -529,9 +529,9 @@ void Pdb::Stop()
 	}
 }
 
-void Pdb::DebugDumpKid(Dwarf_Die *die, unsigned depth, unsigned *cnt, unsigned *disp,bool verbose) {
 #ifdef PLATFORM_WIN32
 #else
+void Pdb::DebugDumpKid(Dwarf_Die *die, unsigned depth, unsigned *cnt, unsigned *disp,bool verbose) {
 	do {
 		(*cnt)++;
 		int tag = dwarf_tag(die);
@@ -750,8 +750,8 @@ void Pdb::DebugDumpKid(Dwarf_Die *die, unsigned depth, unsigned *cnt, unsigned *
 			}
 		}
 	} while (dwarf_siblingof(die, die) == 0);
-#endif
 }
+#endif
 
 const char* Pdb::DebugDump(bool verbose) {
 #ifdef PLATFORM_WIN32

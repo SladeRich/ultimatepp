@@ -88,7 +88,7 @@ adr_t Pdb::GetAddress(FilePos p)
 		return ln.Address;
 	}
 #else
-	// NEVER(); // Todo Dwarf implementation - done?
+	// Dwarf implementation
 	unsigned pline = p.line + 1;
 	Dwarf_Addr adr = 0;
 	Dwarf_Off off = 0;
@@ -165,7 +165,7 @@ Pdb::FilePos Pdb::GetFilePos(adr_t address)
 
 #else
 
-	//NEVER(); // Todo Dwarf implementation - done?
+	// Dwarf implementation
   Dwarf_Addr addr = address - baseAddress;
 	Dwarf_Off off = 0;
 	Dwarf_Off next;
@@ -249,7 +249,7 @@ Pdb::FnInfo Pdb::GetFnInfo0(adr_t address)
 	}
 
 #else
-	//NEVER(); // Todo Dwarf implementation - done?
+	// Dwarf implementation
 	bool done = false;
   Dwarf_Addr addr = address - baseAddress;
 	Dwarf_Off off = 0;
@@ -259,11 +259,9 @@ Pdb::FnInfo Pdb::GetFnInfo0(adr_t address)
 	while (dwarf_nextcu(dwarf, off, &next, &hdrSz, NULL, NULL, NULL) == 0) {
 		Dwarf_Die cu;
 		if (dwarf_offdie(dwarf, off + hdrSz, &cu) != NULL) {
-//			LOG(" Dwarf CU: " << dwarf_diename(&cu));
 			// Iterate over children DIEs
 			Dwarf_Die die; // Debugging Information Entry (DIE)
 			if (dwarf_child(&cu, &die) == 0) {
-//				DebugDumpKid(&die,0,&cnt,&disp,verbose);
 				do {
 					int tag = dwarf_tag(&die);
 					bool verbose = false;
@@ -661,15 +659,16 @@ bool Pdb::GetTypeVal(Pdb::Val* val, Dwarf_Die die) {
 							int64 offset = exp.number2;
 							adr_t bp = context.GetBP();
 							uint64 adr = bp+offset+reg;
-							uint64 v = ptrace(PTRACE_PEEKDATA, mainThreadId, adr, 0);
+							uint64 v = ptrace(PTRACE_PEEKDATA, debug_threadid, adr, 0);
 							LLOG("\t\t\t bp:0x" << Hex(bp) << " r:0x" << Hex(reg) << " offset:" << offset << " address: 0x" << Hex(adr) << " value:" << v);
 							if (array) {
 								val->address = adr;
-							} else {
+							}
+							else {
 								if (valType==DBL) {
 									#ifdef CPU_64
 									#else
-									uint64 v2 = ptrace(PTRACE_PEEKDATA, mainThreadId, bp+reg+4, 0); // With older 32bit CPU double must be spread across 2 long words
+									uint64 v2 = ptrace(PTRACE_PEEKDATA, debug_threadid, bp+reg+4, 0); // With older 32bit CPU double must be spread across 2 long words
 									v |= v2<<4;
 									#endif
 									double d;
@@ -696,7 +695,77 @@ bool Pdb::GetTypeVal(Pdb::Val* val, Dwarf_Die die) {
 							ok = true; // Value is set
 						}
 						else if (DW_OP_breg0 <= exp.atom && exp.atom <= DW_OP_breg31) { // Register values - Pushes the contents of the given register plus the given offset to the stack
-							NEVER();
+							int64 reg = exp.number;
+							int64 offset = exp.number2;
+							user_regs_struct regs;
+							#ifdef CPU_ARM
+							struct iovec iov;
+							iov.iov_base = &regs;
+							iov.iov_len = sizeof(regs);
+							ptrace(PTRACE_GETREGSET, debug_threadid, (void*)NT_PRSTATUS, &iov);
+							unsigned idx = exp.atom - DW_OP_breg0;
+							uint64 r = regs.regs[idx];
+							#else
+							ptrace(PTRACE_GETREGS, debug_threadid, NULL, &regs);
+							uint64 r;
+							switch(exp.atom) {
+								#ifdef CPU_64
+								case DW_OP_breg0: r = regs.rax; break;
+								case DW_OP_breg1: r = regs.rcx; break;
+								case DW_OP_breg2: r = regs.rdx; break;
+								case DW_OP_breg3: r = regs.rbx; break;
+								case DW_OP_breg4: r = regs.rsp; break;
+								case DW_OP_breg5: r = regs.rbx; break;
+								case DW_OP_breg6: r = regs.rsi; break;
+								case DW_OP_breg7: r = regs.rdx; break;
+								#else
+								case DW_OP_breg0: r = regs.Eax; break;
+								case DW_OP_breg1: r = regs.Ecx; break;
+								case DW_OP_breg2: r = regs.Edx; break;
+								case DW_OP_breg3: r = regs.Ebx; break;
+								case DW_OP_breg4: r = regs.Esp; break;
+								case DW_OP_breg5: r = regs.Ebx; break;
+								case DW_OP_breg6: r = regs.Esi; break;
+								case DW_OP_breg7: r = regs.Edx; break;
+								#endif
+								default: r = 0; break;
+							}
+							#endif
+							uint64 adr = r+offset+reg;
+							uint64 v = ptrace(PTRACE_PEEKDATA, debug_threadid, adr, 0);
+							LLOG("\t\t\t r:0x" << Hex(r) << " reg:0x" << Hex(reg) << " offset:" << offset << " address: 0x" << Hex(adr) << " value:" << v);
+							if (array) {
+								val->address = adr;
+							}
+							else {
+								if (valType==DBL) {
+									#ifdef CPU_64
+									#else
+									uint64 v2 = ptrace(PTRACE_PEEKDATA, debug_threadid, r+reg+4, 0); // With older 32bit CPU double must be spread across 2 long words
+									v |= v2<<4;
+									#endif
+									double d;
+									memcpy(&d, &v, sizeof d);
+									val->fval = d;
+									val->rvalue = true;
+								}
+								else if (valType==FLT) {
+									float f;
+									memcpy(&f, &v, sizeof f);
+									val->fval = f;
+									val->rvalue = true;
+								}
+								else if (valType>=0) {
+									// This is a custom val type
+									Type& t = type[valType];
+									t.modbase = adr;
+								}
+								else {
+									val->ival = v;
+									val->rvalue = true;
+								}
+							}
+							ok = true; // Value is set
 						}
 						else if (exp.atom == DW_OP_dup) { // Stack operations - Duplicate the value at the top of the stack
 							NEVER();
@@ -779,7 +848,7 @@ void Pdb::GetLocals(Frame& frame, Context& context, VectorMap<String, Pdb::Val>&
 	param = pick(c.param);
 	local = pick(c.local);
 #else
-	//NEVER(); // Todo Dwarf implementation
+	// Dwarf implementation
 	adr_t ip = context.GetIP();
 	adr_t bp = context.GetBP();
 	adr_t sp = context.GetSP();
@@ -809,8 +878,6 @@ void Pdb::GetLocals(Frame& frame, Context& context, VectorMap<String, Pdb::Val>&
 								LOG("\t Tag:DW_TAG_subprogram #"<<tag<<" loAdr:0x"<<Hex(loAdr)<<" size:"<<(hiAdr-loAdr)<< " Name:"<<(fnName ?: ""));
 								Dwarf_Die kid;
 								if (dwarf_child(&die, &kid) == 0) {
-
-
 									do {
 										Pdb::Val val;
 										if (GetTypeVal(&val, kid)) {
@@ -890,7 +957,7 @@ dword Pdb::GetSymInfo(adr_t modbase, dword typeindex, IMAGEHLP_SYMBOL_TYPE_INFO 
 #ifdef PLATFORM_WIN32
 	SymGetTypeInfo(hProcess, modbase, typeindex, info, &dw);
 #else
-	NEVER(); // Todo Dwarf implementation - done ???
+	NEVER(); // Todo Dwarf implementation
 	Dwarf_Die die;
 	if (dwarf_die_addr_die (dwarf, &modbase, &die)) {
 		int typeTag = dwarf_tag(&die);
@@ -987,7 +1054,7 @@ const Pdb::Type& Pdb::GetType(int ti)
 	
 #else
 
-	//NEVER(); // Todo Dwarf implementation - done
+	// Dwarf implementation
 	//LLOG("PDB::GetType ("<<ti<<')');
 	if(t.size < 0) {
 		t.name = dwarf_diename(&t.die);

@@ -80,20 +80,7 @@ bool Pdb::IsValidFrame(adr_t eip)
 
 adr_t Pdb::GetIP()
 {
-#ifdef PLATFORM_WIN32
-
-#ifdef CPU_64
-	if(win64)
-		return context.context64.Rip;
-#endif
-	return context.context32.Eip;
-
-#else
-
-	//NEVER(); // Todo Dwarf implementation - done?
 	return context.GetIP();
-
-#endif
 }
 
 void Pdb::Sync()
@@ -298,27 +285,8 @@ void Pdb::SetIp()
 	adr_t a = CursorAdr();
 	if(!a)
 		return;
-	
-#ifdef PLATFORM_WIN32
 
-#ifdef CPU_64
-	if(win64)
-		context.context64.Rip = a;
-	else
-#endif
-		context.context32.Eip = (DWORD)a;
-
-#else
-
-	//NEVER(); // Todo Dwarf implementation - done?
-#ifdef CPU_64
-	context.regs.rip = a;
-#else
-	context.regs.eip = a;
-#endif
-
-#endif
-
+	context.SetIP(a);
 	WriteContext();
 	frame[0].pc = a;
 	framelist <<= 0;
@@ -351,16 +319,21 @@ bool Pdb::Step(bool over)
 #ifdef PLATFORM_WIN32
 				l = NDisassemble(out, code, GetIP(), win64);
 #else
-				//NEVER(); // Todo Dwarf implementation - done?
+				// Dwarf implementation
 				csh handle;
 				cs_insn* insn;
-#ifdef CPU_64
+				#ifdef CPU_ARM
+				cs_arch arch = CS_ARCH_ARM64;
+				cs_mode mode = CS_MODE_ARM;
+				#else
+				#ifdef CPU_64
 				cs_arch arch = CS_ARCH_X86;
 				cs_mode mode = CS_MODE_64;
-#else
+				#else
 				cs_arch arch = CS_ARCH_X86;
 				cs_mode mode = CS_MODE_64;
-#endif
+				#endif
+				#endif
 				if(cs_open(arch, mode, &handle) != CS_ERR_OK)
 					return 0;
 				size_t count = cs_disasm(handle, code, i, ip, 0, &insn);
