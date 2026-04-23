@@ -730,6 +730,10 @@ bool Pdb::RunToException()
 						unsigned long procId = 0;
 						ptrace(PTRACE_GETEVENTMSG, pid, NULL, &procId);
 						LLOG("New thread cloned "<<procId<<" pid:"<<pid<<" mainThreadId:"<<mainThreadId);
+						if (AddThread(procId, pid)) {
+							DR_LOG("Added thread: " << procId);
+							LLOG("Added thread: " << procId);
+						}
 						debug_threadid = procId;
 						halt = false;
 						ptrace(PTRACE_CONT, procId, NULL, NULL);
@@ -739,10 +743,13 @@ bool Pdb::RunToException()
 						unsigned long forkId = 0;
 						ptrace(PTRACE_GETEVENTMSG, pid, NULL, &forkId);
 						LLOG("New thread cloned "<<forkId<<" pid:"<<pid<<" mainThreadId:"<<mainThreadId);
+						if (AddThread(forkId, pid)) {
+							DR_LOG("Added process: " << forkId);
+							LLOG("Added process: " << forkId);
+						}
 						debug_threadid = forkId;
 						halt = false;
 						ptrace(PTRACE_CONT, forkId, NULL, NULL);
-
 					} else {
 						debug_threadid = pid;
 					}
@@ -753,7 +760,6 @@ bool Pdb::RunToException()
 						f.regs = context.regs;
 					}
 					if (halt) {
-					
 						bool singleStep = info.si_code==TRAP_TRACE;
 						bool isbreakpoint = info.si_code==TRAP_BRKPT || info.si_code==SI_KERNEL;
 						LLOG("\t Got "<<(stopSig==SIGTRAP?"SIGTRAP":"SIGSTOP")<<"("<<stopSig<<") trace/breakpoint break_running:"<<break_running<<" isbreakpoint:"<<isbreakpoint<<" mainThreadId:"<<mainThreadId<<" debug_threadid:"<<debug_threadid);
@@ -815,20 +821,12 @@ bool Pdb::RunToException()
 					ptrace(PTRACE_GETSIGINFO, pid, NULL, &info);
 					DR_LOG("\t Got SIGCHLD("<<info.si_signo<<") "<<" code:"<<info.si_code);
 					LLOG("\t Got SIGCHLD("<<info.si_signo<<") "<<" code:"<<info.si_code);
-//					ToForeground();
-//					BeepError();
-//					String desc = "Debug failed to run";
-//					if (info.si_errno!=0)
-//						desc << " - " << strerror(info.si_errno);
-//					Prompt(Ctrl::GetAppName(), CtrlImg::error(), desc, t_("OK"));
-//					Stop();
-//					if (RemoveThread(pid)) {
-//						DR_LOG("Exit thread: " << pid);
-//						LLOG("Exit thread: " << pid);
-//					}
-//					LLOG("<<< Debugee failed to run " << pid);
-//					ptrace(PTRACE_CONT, pid, NULL, NULL);
-//					return false; // It has failed to run, it is dead
+					context = ctx;
+					int q = threads.Find(debug_threadid);
+					if(q >= 0) {
+						Thread& f = threads[q];
+						f.regs = context.regs;
+					}
 				}
 			}
 			else if(WIFSIGNALED(status)) {

@@ -9,7 +9,7 @@ uses(!POSIX) plugin/ndisasm;
 
 library(WIN32 (GCC | CLANG)) "dbghelp psapi";
 
-library(POSIX) "elf dw unwind capstone";
+library(POSIX) "elf dw unwind unwind-generic unwind-ptrace capstone";
 
 file
 	Debuggers.h options(BUILDER_OPTION) PCH,

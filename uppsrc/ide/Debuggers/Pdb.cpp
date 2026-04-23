@@ -217,7 +217,7 @@ bool Pdb::Create(Host& local, const String& exefile, const String& cmdline, bool
 
 	// Initialise DWARF and ELF
 	baseAddress = 0;
-	if	(elf_version(EV_CURRENT) == EV_NONE) {
+	if(elf_version(EV_CURRENT) == EV_NONE) {
 		Exclamation("ELF library too old");
 		return false;
 	}
@@ -225,7 +225,7 @@ bool Pdb::Create(Host& local, const String& exefile, const String& cmdline, bool
 	elf = elf_begin(fdProcess, ELF_C_READ, NULL);
 	// Initialise Dwarf library dw
 	dwarf = dwarf_begin_elf(elf, DWARF_C_READ, NULL);
-	if (!dwarf) {
+	if(!dwarf) {
 		Exclamation("Error creating process&[* " + DeQtf(exefile) + "]&" + "Dwarf Elf error: " + DeQtf(dwarf_errmsg(-1)));
 		return false;
 	}
@@ -241,8 +241,9 @@ bool Pdb::Create(Host& local, const String& exefile, const String& cmdline, bool
 		personality(ADDR_NO_RANDOMIZE);
 		ptrace(PTRACE_TRACEME, 0, NULL, NULL);
 		const char *args = cmdParameters;
-//		raise(SIGSTOP);
-		execl(exeFilename, exeFilename, args, NULL);
+		Buffer<char> env(local.environment.GetCount() + 1);
+		memcpy(env, ~local.environment, local.environment.GetCount() + 1);
+		execl(exeFilename, exeFilename, args, ~env);
 		Exclamation("execl failed");
 		return false;
 	} else {

@@ -7,7 +7,7 @@
 #else
 
 #include <sys/user.h>
-#include <elfutils/libdw.h> // To get the libraries use - sudo apt-get install libelf-dev libdw-dev libcapstone-dev
+#include <elfutils/libdw.h> // To get the libraries use - sudo apt-get install libelf-dev libdw-dev libunwind-dev libcapstone-dev
 
 typedef struct _SYMBOL_INFO {
 	unsigned long   SizeOfStruct;

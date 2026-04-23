@@ -4,6 +4,8 @@
 #else
 #include <sys/ptrace.h>
 #include <dwarf.h>
+#include <libunwind.h>
+#include <libunwind-ptrace.h>
 #endif
 
 
@@ -105,112 +107,62 @@ Array<Pdb::Frame> Pdb::Backtrace(Thread& ctx, bool single_frame, bool thread_inf
 	#else
 	unsigned step = 4;
 	#endif
-	uint64 ip = cctx.GetIP();
-	uint64 sp = cctx.GetSP();
-	uint64 fp = cctx.GetBP();
-//auto sp1 = sp;
-	while (fp != 0) {
-		LLOG("Pdb::Backtrace ip:0x"<<Hex(ip)<<" sp:0x"<<Hex(sp)<<" bp:0x"<<Hex(fp));
-		bool done = false;
-	  Dwarf_Addr addr = ip - baseAddress;
-		Dwarf_Off off = 0;
-		Dwarf_Off next;
-		size_t hdrSz;
-		LLOG("\t Finding functions for address:0x"<<Hex(ip)<<" relative :0x"<<Hex(addr));
-		// Iterate over compilation units (CU)
-		while (dwarf_nextcu(dwarf, off, &next, &hdrSz, NULL, NULL, NULL) == 0) {
-			Dwarf_Die cu;
-			if (dwarf_offdie(dwarf, off + hdrSz, &cu) != NULL) {
-				// Iterate over children DIEs
-				Dwarf_Die die; // Debugging Information Entry (DIE)
-				if (dwarf_child(&cu, &die) == 0) {
-					do {
-						int tag = dwarf_tag(&die);
-						bool verbose = false;
-						Dwarf_Die kid;
-						if (dwarf_child(&die, &kid) == 0) {
-							//LLOG("Has kids");
+	unw_addr_space_t as = unw_create_addr_space(&_UPT_accessors, 0);
+	void* ui = _UPT_create(mainThreadId);
+	unw_cursor_t cursor;
+	if (unw_init_remote(&cursor, as, ui) >= 0) {
+		uint64 lastFrame = 0; // Prevent loops with optimised stackframes
+		// Unwind frames one by one, going up the frame stack
+		do {
+			unw_word_t ip, sp, offset;
+			unw_get_reg(&cursor, UNW_REG_IP, &ip);
+			unw_get_reg(&cursor, UNW_REG_SP, &sp);
+			char name[256];
+			name[0] = 0;
+			unw_get_proc_name(&cursor, name, sizeof(name), &offset);
+			LLOG("Pdb::Backtrace 0x"<<Hex(ip)<<": ("<<name<<"+0x"<<offset<<") [sp=0x"<<Hex(sp)<<"]");
+			lastFrame = offset;
+			Frame& f = frame.Add();
+			f.pc = ip;
+			f.frame = offset;
+			f.stack = sp;
+			f.fn = GetFnInfo(f.pc);
+			LOG("Pdb::Backtrace 0x"<<Hex(f.pc)<<": ("<<f.fn.name<<"+0x"<<f.frame<<") [sp=0x"<<Hex(f.stack)<<"]");
+			if(thread_info) {
+				if(frame.GetCount() > 20)
+					break;
+			}
+			else {
+				if(IsNull(f.fn.name)) {
+					if(single_frame)
+						return frame;
+					f.text = Hex(f.pc);
+					for(int i = 0; i < module.GetCount(); i++) {
+						const ModuleInfo& m = module[i];
+						if(f.pc >= m.base && f.pc < m.base + m.size) {
+							f.text << " (" << GetFileName(m.path) << ")";
+							break;
 						}
-						switch(tag) {
-							case DW_TAG_subprogram: {
-								//LLOG("\t Check in address range for "<<dwarf_diename(&die));
-								if(dwarf_haspc(&die, addr)) {
-									const char *name = dwarf_diename(&die);
-									Dwarf_Addr loAdr=0;
-									dwarf_lowpc(&die, &loAdr);
-									Dwarf_Addr hiAdr=0;
-									dwarf_highpc(&die, &hiAdr);
-									unsigned size = hiAdr - loAdr;
-									Frame& f = frame.Add();
-									f.pc = ip;
-									f.frame = fp;
-									f.stack = sp;
-									f.fn = GetFnInfo(f.pc);
-									LLOG("\t\t Added frame p:0x"<<Hex(ip)<<" fp:0x"<<Hex(fp)<<" sp:0x"<<Hex(sp)<< ' '<<name);
-									done = true;
-									if(thread_info) {
-										if(frame.GetCount() > 20)
-											break;
-									}
-									else {
-										if(IsNull(f.fn.name)) {
-											if(single_frame)
-												return frame;
-											f.text = Hex(f.pc);
-											for(int i = 0; i < module.GetCount(); i++) {
-												const ModuleInfo& m = module[i];
-												if(f.pc >= m.base && f.pc < m.base + m.size) {
-													f.text << " (" << GetFileName(m.path) << ")";
-													break;
-												}
-											}
-										}
-										else {
-											GetLocals(f, cctx, f.param, f.local);
-											if(single_frame)
-												return frame;
-											f.text = f.fn.name;
-											f.text << '(';
-											for(int i = 0; i < f.param.GetCount(); i++) {
-												if(i)
-													f.text << ", ";
-												f.text << f.param.GetKey(i) << "=" << Visualise(f.param[i], MEMBER).GetString();
-											}
-											f.text << ')';
-										}
-									}
-								}
-								break;
-							}
-						}
-						if (done) break;
-					} while (dwarf_siblingof(&die, &die) == 0);
-					if (done) break;
+					}
+				}
+				else {
+					GetLocals(f, cctx, f.param, f.local);
+					if(single_frame)
+						return frame;
+					f.text = f.fn.name;
+					f.text << '(';
+					for(int i = 0; i < f.param.GetCount(); i++) {
+						if(i)
+							f.text << ", ";
+						f.text << f.param.GetKey(i) << "=" << Visualise(f.param[i], MEMBER).GetString();
+					}
+					f.text << ')';
 				}
 			}
-			off = next;
-		}
-		if (!done) {
-			break;
-		}
-		// Go next level down the stack
-		#ifdef CPU_ARM
-		ip = ptrace(PTRACE_PEEKDATA, mainThreadId, fp, 0);
-		fp = ptrace(PTRACE_PEEKDATA, mainThreadId, fp - step, 0);
-		#else
-		ip = ptrace(PTRACE_PEEKDATA, mainThreadId, fp + step, 0);
-		fp = ptrace(PTRACE_PEEKDATA, mainThreadId, fp, 0);
-		#endif
-		sp = fp + 2*step;
-		cctx.SetIP(ip);
-		cctx.SetSP(sp);
-		cctx.SetBP(fp);
-	};
-//	for (int i=0; i<16; i++) {
-//		auto p = ptrace(PTRACE_PEEKDATA, mainThreadId, sp1, 0);
-//		LLOG("SP 0x"<<Hex(sp1)<<" 0x"<<Hex(p));
-//		sp1 += step;
-//	}
+		} while (unw_step(&cursor) > 0);
+	}
+	_UPT_destroy(ui);
+	unw_destroy_addr_space(as);
 	LLOG("\t Frame count "<<frame.GetCount());
 #endif
 
@@ -364,4 +316,3 @@ void Pdb::BTs()
 	};
 }
 
-//#endif
