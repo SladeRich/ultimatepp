@@ -100,13 +100,7 @@ Array<Pdb::Frame> Pdb::Backtrace(Thread& ctx, bool single_frame, bool thread_inf
 	
 #else
 
-	// Dwarf implementation
-	// Get Instruction Pointer (IP) and Stack Pointer (SP)
-	#ifdef CPU_64
-	unsigned step = 8;
-	#else
-	unsigned step = 4;
-	#endif
+	// Dwarf implementation - use unwind to get the stack
 	unw_addr_space_t as = unw_create_addr_space(&_UPT_accessors, 0);
 	void* ui = _UPT_create(mainThreadId);
 	unw_cursor_t cursor;
@@ -127,7 +121,9 @@ Array<Pdb::Frame> Pdb::Backtrace(Thread& ctx, bool single_frame, bool thread_inf
 			f.frame = offset;
 			f.stack = sp;
 			f.fn = GetFnInfo(f.pc);
-			LOG("Pdb::Backtrace 0x"<<Hex(f.pc)<<": ("<<f.fn.name<<"+0x"<<f.frame<<") [sp=0x"<<Hex(f.stack)<<"]");
+			if (f.fn.name.IsEmpty())
+				f.fn.name = name;
+			LLOG("Pdb::Backtrace 0x"<<Hex(f.pc)<<": ("<<f.fn.name<<"+0x"<<f.frame<<") [sp=0x"<<Hex(f.stack)<<"]");
 			if(thread_info) {
 				if(frame.GetCount() > 20)
 					break;
@@ -164,6 +160,7 @@ Array<Pdb::Frame> Pdb::Backtrace(Thread& ctx, bool single_frame, bool thread_inf
 	_UPT_destroy(ui);
 	unw_destroy_addr_space(as);
 	LLOG("\t Frame count "<<frame.GetCount());
+
 #endif
 
 	return frame;

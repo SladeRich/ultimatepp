@@ -4,6 +4,7 @@
 #else
 #include <dlfcn.h>
 #include <dwarf.h>
+#include <cxxabi.h>
 #include <sys/ptrace.h>
 #endif
 
@@ -98,7 +99,7 @@ adr_t Pdb::GetAddress(FilePos p)
 	while (dwarf_nextcu(dwarf, off, &next, &hdrSz, NULL, NULL, NULL) == 0) {
 		Dwarf_Die cu;
 		if (dwarf_offdie(dwarf, off + hdrSz, &cu) != NULL) {
-			if(strcmp(p.path,dwarf_diename(&cu))==0) {
+			//if(strcmp(p.path,dwarf_diename(&cu))==0) { - Blitz has multiple files
 				Dwarf_Lines *lines;
 				size_t nlines;
 				if (dwarf_getsrclines(&cu, &lines, &nlines) == 0) {
@@ -126,7 +127,7 @@ adr_t Pdb::GetAddress(FilePos p)
 						adr = a;
 					}
 				}
-			}
+			//}
 			break;
 		}
 		off = next;
@@ -207,8 +208,8 @@ Pdb::FilePos Pdb::GetFilePos(adr_t address)
 						}
 					}
 				}
+				break;
 			}
-			break;
 		}
 		off = next;
 	}
@@ -264,8 +265,6 @@ Pdb::FnInfo Pdb::GetFnInfo0(adr_t address)
 			if (dwarf_child(&cu, &die) == 0) {
 				do {
 					int tag = dwarf_tag(&die);
-					bool verbose = false;
-					const char *name = dwarf_diename(&die);
 					Dwarf_Die kid;
 					if (dwarf_child(&die, &kid) == 0) {
 						//LOG("Has kids");
@@ -278,12 +277,45 @@ Pdb::FnInfo Pdb::GetFnInfo0(adr_t address)
 								Dwarf_Addr hiAdr=0;
 								dwarf_highpc(&die, &hiAdr);
 								unsigned size = hiAdr - loAdr;
+								String name = dwarf_diename(&die);
+								Dwarf_Attribute linkAttr;
+								if (dwarf_attr(&die, DW_AT_linkage_name, &linkAttr)) {
+									const char *mangledName = dwarf_formstring(&linkAttr);
+									if (mangledName != NULL) {
+										int status;
+										char* demangled = abi::__cxa_demangle(mangledName, NULL, NULL, &status);
+										if (status == 0) {
+											name = demangled;
+											std::free(demangled);
+										}
+									}
+								}
+								else {
+									// Check the header file for the full name
+									Dwarf_Attribute specAttr;
+									if (dwarf_attr(&die, DW_AT_specification, &specAttr)) {
+										Dwarf_Die specDie;
+										if (dwarf_formref_die(&specAttr, &specDie)) {
+											if (dwarf_attr(&specDie, DW_AT_linkage_name, &linkAttr)) {
+												const char *mangledName = dwarf_formstring(&linkAttr);
+												if (mangledName != NULL) {
+													int status;
+													char* demangled = abi::__cxa_demangle(mangledName, NULL, NULL, &status);
+													if (status == 0) {
+														name = demangled;
+														std::free(demangled);
+													}
+												}
+											}
+										}
+									}
+								}
 								LLOG("GetFnInfo " << name
-								     << ", Address: " << Hex(loAdr)
-								     << ", Size: " << Hex(size)
+								     << ", Address: 0x" << Hex(loAdr)
+								     << ", Size: " << size
 								     << ", Tag: " << tag);
 								fn.name = name;
-								fn.address = loAdr;
+								fn.address = loAdr + baseAddress;
 								fn.size = size;
 								fn.pdbtype = tag;
 								done = true;

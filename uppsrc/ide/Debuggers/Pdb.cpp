@@ -74,7 +74,7 @@ void TerminateChildProcesses(dword dwProcessId, unsigned int uExitCode) {
 #pragma comment(lib, "DbgHelp.lib")
 #pragma comment(lib, "psapi.lib")
 
-#define LLOG(x) // LOG(x)
+#define LLOG(x)  DLOG(x)
 
 using namespace PdbKeys;
 
@@ -229,7 +229,7 @@ bool Pdb::Create(Host& local, const String& exefile, const String& cmdline, bool
 		Exclamation("Error creating process&[* " + DeQtf(exefile) + "]&" + "Dwarf Elf error: " + DeQtf(dwarf_errmsg(-1)));
 		return false;
 	}
-	DR_LOG(DebugDump(true));
+	///LLOG(DebugDump(true));
 	// Run debugee using fork
 	mainThreadId = fork();
 	if(mainThreadId == -1) {
@@ -241,9 +241,23 @@ bool Pdb::Create(Host& local, const String& exefile, const String& cmdline, bool
 		personality(ADDR_NO_RANDOMIZE);
 		ptrace(PTRACE_TRACEME, 0, NULL, NULL);
 		const char *args = cmdParameters;
-		Buffer<char> env(local.environment.GetCount() + 1);
-		memcpy(env, ~local.environment, local.environment.GetCount() + 1);
-		execl(exeFilename, exeFilename, args, ~env);
+		// Build up a list of pointers to the environment variables
+		Buffer<char> buf(local.environment.GetCount() + 1);
+		memcpy(buf, ~local.environment, local.environment.GetCount());
+		Vector<const char*> env;
+		char *p = ~buf;
+		const char *l = p;
+		for (int i=local.environment.GetCount(); i--; ) {
+			if (*p == 0) {
+				if (strlen(l) > 0) {
+					env.Add(l);
+					l = p + 1;
+				}
+			}
+			p++;
+		}
+		env.Add(0);
+		execle(exeFilename, exeFilename, args, NULL, &env[0]);
 		Exclamation("execl failed");
 		return false;
 	} else {
@@ -513,7 +527,6 @@ void Pdb::Stop()
 		}
 #else
 		// Todo  DWARF
-//		waitPidCease = true;
 		if (mainThreadId>0) {
 			ptrace(PTRACE_KILL, mainThreadId, NULL, NULL);
 			dwarf_end(dwarf);
@@ -720,8 +733,8 @@ void Pdb::DebugDumpKid(Dwarf_Die *die, unsigned depth, unsigned *cnt, unsigned *
 				if (verbose || name) {
 					unsigned typeOff = 0;
 					Dwarf_Attribute typeAttr;
-					Dwarf_Die typeDie;
 					if (dwarf_attr(die, DW_AT_type, &typeAttr)) {
+						Dwarf_Die typeDie;
 						if (dwarf_formref_die(&typeAttr, &typeDie)) {
 							Dwarf_Off offset = dwarf_dieoffset(&typeDie);
 							typeOff = offset;

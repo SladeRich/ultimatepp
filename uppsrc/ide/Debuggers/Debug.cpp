@@ -143,7 +143,7 @@ bool Pdb::AddBp(adr_t address)
 		LLOG("\t Write memory failed id:"<<mainThreadId<<" at 0x"<<Hex(address)<<" of 0x"<<Hex(bp)<<" - "<<strerror(errno));
 		return false;
 	}
-	LLOG("\t Write memory at break point id:"<<mainThreadId<<" 0x"<<Hex(address)<<" to 0x"<<Hex(bp)<<" previous was 0x"<<Hex(prev));
+	LLOG("\t Write memory at break point id:"<<mainThreadId<<" 0x"<<Hex(address)<<" to 0x"<<Hex((byte)bp)<<" previous was 0x"<<Hex(prev));
 
 #else
 
@@ -159,7 +159,7 @@ bool Pdb::AddBp(adr_t address)
 		LLOG("\t Write memory failed id:"<<mainThreadId<<" at 0x"<<Hex(address)<<" of 0x"<<Hex(int3)<<" - "<<strerror(errno));
 		return false;
 	}
-	LLOG("\t Write memory at break point id:"<<mainThreadId<<" 0x"<<Hex(address)<<" to 0x"<<Hex(int3)<<" previous was 0x"<<Hex(prev));
+	LLOG("\t Write memory at break point id:"<<mainThreadId<<" 0x"<<Hex(address)<<" to 0x"<<Hex((byte)int3)<<" previous was 0x"<<Hex(prev));
 	
 #endif
 
@@ -961,16 +961,9 @@ void Pdb::BreakRunning() //TODO: Fix in wow64?
 		else
 			Exclamation("Operation is not supported on this OS");
 #else
-	// Todo Dwarf implementation
+	// Dwarf implementation
 	LLOG("Pdb::BreakRunning mainThreadId:"<<mainThreadId);
-	
-errno = 0 ;
-//	ptrace(PTRACE_ATTACH, mainThreadId, NULL, NULL);
-//	ptrace(PTRACE_SEIZE, mainThreadId, NULL, NULL);
-//	ptrace(PTRACE_SYSCALL, mainThreadId, NULL, NULL);
-	ptrace(PTRACE_INTERRUPT, mainThreadId, NULL, NULL); // Issue a debugger stop request
-DLOG(">>>>>>>>>>>>>>>>> PTRACE_INTERRUPT "<<strerror(errno));
-
+	kill(mainThreadId, SIGSTOP);
 #endif
 	}
 }
