@@ -286,7 +286,7 @@ void Pdb::SetIp()
 	if(!a)
 		return;
 
-	context.SetIP(a);
+	context.SetIP(a, win64);
 	WriteContext();
 	frame[0].pc = a;
 	framelist <<= 0;

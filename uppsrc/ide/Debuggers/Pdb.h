@@ -116,14 +116,14 @@ struct Pdb : Debugger, ParentCtrl {
 		user_regs_struct regs;
 #endif
 
-		adr_t GetIP() {
+		adr_t GetIP(bool win64=true) {
 			#ifdef PLATFORM_WIN32
 			#ifdef CPU_64
 			if(win64)
-				return context.context64.Rip;
+				return context64.Rip;
 			else
 			#endif
-			return context.context32.Eip;
+			return context32.Eip;
 			#else
 			#ifdef CPU_ARM
 			return regs.pc;
@@ -136,14 +136,14 @@ struct Pdb : Debugger, ParentCtrl {
 			#endif
 			#endif
 		}
-		adr_t GetSP() {
+		adr_t GetSP(bool win64=true) {
 			#ifdef PLATFORM_WIN32
 			#ifdef CPU_64
 			if(win64)
-				return context.context64.Rsp;
+				return context64.Rsp;
 			else
 			#endif
-			return context.context32.Esp;
+			return context32.Esp;
 			#else
 			#ifdef CPU_ARM
 			return regs.sp;
@@ -156,14 +156,14 @@ struct Pdb : Debugger, ParentCtrl {
 			#endif
 			#endif
 		}
-		adr_t GetBP() {
+		adr_t GetBP(bool win64=true) {
 			#ifdef PLATFORM_WIN32
 			#ifdef CPU_64
 			if(win64)
-				return context.context64.Rbp;
+				return context64.Rbp;
 			else
 			#endif
-			return context.context32.Ebp;
+			return context32.Ebp;
 			#else
 			#ifdef CPU_ARM
 			return regs.regs[29]; // AArch64 uses register X29 as the frame pointer, or R11 for 32 bit systems
@@ -176,14 +176,14 @@ struct Pdb : Debugger, ParentCtrl {
 			#endif
 			#endif
 		}
-		adr_t GetFlags() {
+		adr_t GetFlags(bool win64=true) {
 			#ifdef PLATFORM_WIN32
 			#ifdef CPU_64
 			if(win64)
-				return context.context64.EFlags;
+				return context64.EFlags;
 			else
 			#endif
-			return context.context32.EFlags;
+			return context32.EFlags;
 			#else
 			#ifdef CPU_ARM
 			return regs.pstate;
@@ -196,14 +196,14 @@ struct Pdb : Debugger, ParentCtrl {
 			#endif
 			#endif
 		}
-		void SetIP(adr_t ip) {
+		void SetIP(adr_t ip, bool win64=true) {
 			#ifdef PLATFORM_WIN32
 			#ifdef CPU_64
 			if(win64)
-				context.context64.Rip = ip;
+				context64.Rip = ip;
 			else
 			#endif
-			context.context32.Eip = (DWORD)ip;
+			context32.Eip = (DWORD)ip;
 			#else
 			#ifdef CPU_ARM
 			regs.pc = ip;
@@ -216,14 +216,14 @@ struct Pdb : Debugger, ParentCtrl {
 			#endif
 			#endif
 		}
-		void SetSP(adr_t sp) {
+		void SetSP(adr_t sp, bool win64=true) {
 			#ifdef PLATFORM_WIN32
 			#ifdef CPU_64
 			if(win64)
-				context.context64.Rsp = sp;
+				context64.Rsp = sp;
 			else
 			#endif
-			context.context32.Esp = (DWORD)sp;
+			context32.Esp = (DWORD)sp;
 			#else
 			#ifdef CPU_ARM
 			regs.sp = sp;
@@ -236,14 +236,14 @@ struct Pdb : Debugger, ParentCtrl {
 			#endif
 			#endif
 		}
-		void SetBP(adr_t bp) {
+		void SetBP(adr_t bp, bool win64=true) {
 			#ifdef PLATFORM_WIN32
 			#ifdef CPU_64
 			if(win64)
-				context.context64.Rbp = bp;
+				context64.Rbp = bp;
 			else
 			#endif
-			context.context32.Ebp = (DWORD)bp;
+			context32.Ebp = (DWORD)bp;
 			#else
 			#ifdef CPU_ARM
 			regs.regs[29] = bp; // AArch64 uses register X29 as the frame pointer, or R11 for 32 bit systems
@@ -256,14 +256,14 @@ struct Pdb : Debugger, ParentCtrl {
 			#endif
 			#endif
 		}
-		void SetFlags(adr_t f) {
+		void SetFlags(adr_t f, bool win64=true) {
 			#ifdef PLATFORM_WIN32
 			#ifdef CPU_64
 			if(win64)
-				context.context64.EFlags = f;
+				context64.EFlags = f;
 			else
 			#endif
-			context.context32.EFlags = (DWORD)f;
+			context32.EFlags = (DWORD)f;
 			#else
 			#ifdef CPU_ARM
 			regs.pstate = f;

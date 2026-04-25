@@ -529,6 +529,7 @@ void Pdb::Stop()
 		// Todo  DWARF
 		if (mainThreadId>0) {
 			ptrace(PTRACE_KILL, mainThreadId, NULL, NULL);
+			kill(mainThreadId, SIGKILL);
 			dwarf_end(dwarf);
 			elf_end(elf);
 			close(fdProcess);

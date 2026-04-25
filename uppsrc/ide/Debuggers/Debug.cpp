@@ -348,13 +348,13 @@ Pdb::Context Pdb::ReadContext(int hThread)
 #endif
 
 #endif
-	LLOG("ReadContext hThread:"<<hThread<<" IP:0x"<<Hex(r.GetIP())<<" SP:0x"<<Hex(r.GetSP())<<" flags:0x"<<Hex(r.GetFlags()));
+	LLOG("ReadContext hThread:"<<hThread<<" IP:0x"<<Hex(r.GetIP(win64))<<" SP:0x"<<Hex(r.GetSP(win64))<<" flags:0x"<<Hex(r.GetFlags(win64)));
 	return r;
 }
 
 void Pdb::WriteContext(int hThread, Context& context)
 {
-	LLOG("WriteContext hThread:"<<hThread<<" IP:0x"<<Hex(context.GetIP())<<" SP:0x"<<Hex(context.GetSP())<<" BP:0x"<<Hex(context.GetBP()));
+	LLOG("WriteContext hThread:"<<hThread<<" IP:0x"<<Hex(context.GetIP(win64))<<" SP:0x"<<Hex(context.GetSP(win64))<<" BP:0x"<<Hex(context.GetBP(win64)));
 
 #ifdef PLATFORM_WIN32
 
@@ -418,7 +418,7 @@ bool Pdb::AddThread(dword dwThreadId, int hThread)
 	Thread& f = threads.GetAdd(dwThreadId);
 	// Retrive "base-level" stack-pointer, to have limit for stackwalks:
 	Context c = ReadContext(hThread);
-	f.sp = c.GetSP();
+	f.sp = c.GetSP(win64);
 	f.hThread = hThread;
 	LLOG("Adding thread " << dwThreadId << ", Thread SP: 0x" << Hex(f.sp) << ", handle: 0x" << FormatIntHex((dword)(uintptr_t)(hThread)));
 	return true;
@@ -696,9 +696,6 @@ bool Pdb::RunToException()
 					DR_LOG("Create main thread: " << pid);
 					LLOG("Create main thread: " << pid);
 				}
-//ptrace(PTRACE_ATTACH, mainThreadId, NULL, NULL);
-//ptrace(PTRACE_SEIZE, mainThreadId, NULL, NULL);
-//ptrace(PTRACE_SYSCALL, mainThreadId, NULL, NULL);
 				ptrace(PTRACE_SETOPTIONS, mainThreadId, NULL, PTRACE_O_TRACECLONE|PTRACE_O_TRACEFORK); // Enable multi threading debugging
 			}
 			// Check if child process finished
