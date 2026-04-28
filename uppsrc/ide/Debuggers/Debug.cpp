@@ -104,6 +104,8 @@ void Pdb::LoadModuleInfo()
 	}
 	UnloadModuleSymbols();
 	module = pick(nm);
+#else
+	LoadGlobals(w);
 #endif
 
 	refreshmodules = false;
@@ -297,7 +299,7 @@ void Pdb::Unlock()
 }
 
 
-Pdb::Context Pdb::ReadContext(int hThread)
+Pdb::Context Pdb::ReadContext(Thread::Hnd hThread)
 {
 	DR_LOG("ReadContext");
 	Context r;
@@ -352,7 +354,7 @@ Pdb::Context Pdb::ReadContext(int hThread)
 	return r;
 }
 
-void Pdb::WriteContext(int hThread, Context& context)
+void Pdb::WriteContext(Thread::Hnd  hThread, Context& context)
 {
 	LLOG("WriteContext hThread:"<<hThread<<" IP:0x"<<Hex(context.GetIP(win64))<<" SP:0x"<<Hex(context.GetSP(win64))<<" BP:0x"<<Hex(context.GetBP(win64)));
 
@@ -410,7 +412,7 @@ void Pdb::WriteContext(int hThread, Context& context)
 #endif
 }
 
-bool Pdb::AddThread(dword dwThreadId, int hThread)
+bool Pdb::AddThread(dword dwThreadId, Thread::Hnd  hThread)
 {
 	if(threads.Find(dwThreadId) >= 0)
 		return false; // Already have this thread

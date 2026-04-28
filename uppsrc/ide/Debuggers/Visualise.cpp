@@ -117,7 +117,7 @@ void Pdb::CatInt(Visual& result, int64 val, dword flags)
 void Pdb::Visualise(Visual& result, Pdb::Val val, dword flags)
 {
 	DR_LOG("Visualise");
-//DLOG(" adr:"<<Hex(val.address));
+	DLOG("Visualise "<<val);
 	if(!result.type)
 		result.type = val.type;
 	const int maxlen = 300;
@@ -147,11 +147,8 @@ void Pdb::Visualise(Visual& result, Pdb::Val val, dword flags)
 					dt = "..";
 				}
 				result.Cat(" ");
-//DLOG("Visualise adr:"<<Hex(val.address)<<" n:"<<n);
-//LOGHEXDUMP(~x,n);
 				result.Cat(FormatString(x), SRed);
 				result.Cat(dt, SGray);
-//DLOG("Visualise adr:"<<Hex(val.address)<<" result:"<<result.GetString());
 			}
 			return;
 		}

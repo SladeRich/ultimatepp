@@ -239,9 +239,9 @@ Pdb::FnInfo Pdb::GetFnInfo0(adr_t address)
 	if(SymFromAddr(hProcess, address, &h, f)) {
 		LLOG("GetFnInfo " << f->Name
 		     << ", type index: " << f->TypeIndex
-		     << ", Flags: " << FormatIntHex(f->Flags)
-		     << ", Address: " << Hex((dword)f->Address)
-		     << ", Size: " << FormatIntHex((dword)f->Size)
+		     << ", Flags: 0x" << FormatIntHex(f->Flags)
+		     << ", Address: 0x" << Hex((dword)f->Address)
+		     << ", Size: 0x" << FormatIntHex((dword)f->Size)
 		     << ", Tag: " << SymTagAsString(f->Tag));
 		fn.name = f->Name;
 		fn.address = (adr_t)f->Address;
@@ -417,7 +417,7 @@ struct Pdb::LocalsCtx {
 	Context                    *context;
 };
 
-bool CALLBACK Pdb::EnumLocals(PSYMBOL_INFO pSym, unsigned long SymbolSize, void* UserContext)
+int CALLBACK Pdb::EnumLocals(PSYMBOL_INFO pSym, unsigned long SymbolSize, void* UserContext)
 {
 	LocalsCtx& c = *(LocalsCtx *)UserContext;
 
@@ -477,8 +477,6 @@ bool CALLBACK Pdb::EnumLocals(PSYMBOL_INFO pSym, unsigned long SymbolSize, void*
 	DDUMPHEX((adr_t)pSym->Address);
 #endif
 	LLOG("LOCAL " << c.pdb->GetType(v.type).name << " " << pSym->Name << ": " << Format64Hex(v.address));
-#else
-	NEVER(); // Todo Dwarf implementation
 #endif
 	return TRUE;
 }
@@ -935,7 +933,7 @@ void Pdb::GetLocals(Frame& frame, Context& context, VectorMap<String, Pdb::Val>&
 	LLOG("===========================");
 }
 
-bool CALLBACK Pdb::EnumGlobals(PSYMBOL_INFO pSym, unsigned long SymbolSize, void* UserContext)
+int CALLBACK Pdb::EnumGlobals(PSYMBOL_INFO pSym, unsigned long SymbolSize, void* UserContext)
 {
 	LocalsCtx& c = *(LocalsCtx *)UserContext;
 

@@ -384,10 +384,11 @@ struct Pdb : Debugger, ParentCtrl {
 	
 	struct Thread : Context {
 #ifdef PLATFORM_WIN32
-		HANDLE  hThread;
+		typedef HANDLE Hnd;
 #else
-		int  hThread;
+		typedef int Hnd;
 #endif
+		Hnd hThread;
 		adr_t   sp;
 	};
 	
@@ -530,12 +531,12 @@ struct Pdb : Debugger, ParentCtrl {
 	uint64     GetCpuRegister(const Context& ctx, int sym);
 
 // debug
-	Context    ReadContext(int hThread);
-	void       WriteContext(int hThread, Context& context);
+	Context    ReadContext(Thread::Hnd  hThread);
+	void       WriteContext(Thread::Hnd  hThread, Context& context);
 	void       LoadModuleInfo();
 	int        FindModuleIndex(adr_t base);
 	void       UnloadModuleSymbols();
-	bool       AddThread(dword dwThreadId, int hThread);
+	bool       AddThread(dword dwThreadId, Thread::Hnd  hThread);
 	bool       RemoveThread(dword dwThreadId);
 	void       Lock();
 	void       Unlock();
@@ -566,8 +567,8 @@ struct Pdb : Debugger, ParentCtrl {
 
 // sym
 	struct LocalsCtx;
-	static bool CALLBACK  EnumLocals(PSYMBOL_INFO pSymInfo, unsigned long  SymbolSize, void* UserContext);
-	static bool CALLBACK  EnumGlobals(PSYMBOL_INFO pSymInfo, unsigned long SymbolSize, void* UserContext);
+	static int CALLBACK  EnumLocals(PSYMBOL_INFO pSymInfo, unsigned long  SymbolSize, void* UserContext);
+	static int CALLBACK  EnumGlobals(PSYMBOL_INFO pSymInfo, unsigned long SymbolSize, void* UserContext);
 	dword                 GetSymInfo(adr_t modbase, dword typeindex, IMAGEHLP_SYMBOL_TYPE_INFO info);
 	String                GetSymName(adr_t modbase, dword typeindex);
 	void                  TypeVal(Pdb::Val& v, int typeId, adr_t modbase);
