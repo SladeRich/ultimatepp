@@ -552,9 +552,13 @@ void Pdb::DebugDumpKid(Dwarf_Die *die, unsigned depth, unsigned *cnt, unsigned *
 		int tag = dwarf_tag(die);
 		const char *name = dwarf_diename(die);
 		Dwarf_Off offset = dwarf_dieoffset(die);
+		String s, push;
+		for (int i=depth; i--; )
+			push.Cat('\t');
 		switch(tag) {
 			case DW_TAG_subprogram:
 				if (verbose || name) {
+					const char *tagName = "DW_TAG_subprogram";
 					const char *file = dwarf_decl_file(die);
 					int line = -1;
 					dwarf_decl_line(die, &line);
@@ -571,31 +575,39 @@ void Pdb::DebugDumpKid(Dwarf_Die *die, unsigned depth, unsigned *cnt, unsigned *
 						adr = bkpts[0];
 						free(bkpts);
 					}
-					LOG("<"<<depth<<">["<<offset<<"]  Tag:DW_TAG_subprogram #"<<tag<<" name:"<<(name ?: "")<<" adr:0x"<<Hex(adr)<<" loAdr:0x"<<Hex(loAdr)<<" hiAdr:0x"<<Hex(hiAdr)<<" pcAdr:0x"<<Hex(pcAdr)<<" line:"<<line<<" file:" << (file ?:""));
+					s << offset<<push<<" "<<tagName<<" #"<<tag;
+					s << " name:'"<<(name ?: "")<<"'";
+					s << " adr:0x"<<Hex(adr)<<" loAdr:0x"<<Hex(loAdr)<<" hiAdr:0x"<<Hex(hiAdr)<<" pcAdr:0x"<<Hex(pcAdr);
+					s << " line:"<<line<<" file:" << (file ?:"");
 					(*disp)++;
 				}
 				break;
 			case DW_TAG_variable:
 				if (verbose || name) {
+					const char *tagName = "DW_TAG_variable";
 					const char *file = dwarf_decl_file(die);
 					int line = -1;
 					dwarf_decl_line(die, &line);
 					unsigned typeOff = 0;
-					Dwarf_Attribute typeAttr;
 					Dwarf_Die typeDie;
+					Dwarf_Attribute typeAttr;
 					if (dwarf_attr(die, DW_AT_type, &typeAttr)) {
 						if (dwarf_formref_die(&typeAttr, &typeDie)) {
 							Dwarf_Off offset = dwarf_dieoffset(&typeDie);
 							typeOff = offset;
 						}
 					}
-					LOG("<"<<depth<<">["<<offset<<"]  Tag:DW_TAG_variable #"<<tag<<" name:"<<(name ?: "")<<" type:"<<typeOff<<" line:"<<line<<" file:" << (file ?:""));
+					s << offset<<push<<" "<<tagName<<" #"<<tag;
+					s << " name:'"<<(name ?: "")<<"'";
+					s << " ref:"<<typeOff;
+					s << " line:"<<line<<" file:" << (file ?:"");
 					(*disp)++;
 				}
 				break;
 			case DW_TAG_structure_type:
 			case DW_TAG_class_type:
 				if (verbose || name) {
+					const char *tagName = (tag==DW_TAG_class_type?"DW_TAG_class_type":"DW_TAG_structure_type");
 					const char *file = dwarf_decl_file(die);
 					int line = -1;
 					dwarf_decl_line(die, &line);
@@ -604,12 +616,16 @@ void Pdb::DebugDumpKid(Dwarf_Die *die, unsigned depth, unsigned *cnt, unsigned *
 					if (dwarf_attr(die, DW_AT_byte_size, &sizeAttr)) {
 						dwarf_formudata(&sizeAttr, &size);
 					}
-					LOG("<"<<depth<<">["<<offset<<"]  Tag:"<<(tag==DW_TAG_class_type?"DW_TAG_class_type":"DW_TAG_structure_type")<<" name:"<<(name ?: "")<<" #"<<tag<<" size:"<<size<<" line:"<<line<<" file:" << (file ?:""));
+					s << offset<<push<<" "<<tagName<<" #"<<tag;
+					s << " name:'"<<(name ?: "")<<"'";
+					s << " size:"<<size;
+					s << " line:"<<line<<" file:" << (file ?:"");
 					(*disp)++;
 				}
 				break;
 			case DW_TAG_member:
 				if (verbose || name) {
+					const char *tagName = "DW_TAG_member";
 					const char *file = dwarf_decl_file(die);
 					int line = -1;
 					dwarf_decl_line(die, &line);
@@ -627,30 +643,54 @@ void Pdb::DebugDumpKid(Dwarf_Die *die, unsigned depth, unsigned *cnt, unsigned *
 					if (dwarf_attr(die, DW_AT_data_member_location, &locAttr)) {
 						dwarf_formudata(&locAttr, &locIdx);
 					}
-					LOG("<"<<depth<<">["<<offset<<"]  Tag:DW_TAG_member #"<<tag<<" name:"<<(name ?: "")<<" type:"<<typeOff<<" locIdx:"<<locIdx<<" line:"<<line<<" file:" << (file ?:""));
+					s << offset<<push<<" "<<tagName<<" #"<<tag;
+					s << " name:'"<<(name ?: "")<<"'";
+					s << " locIdx:"<<locIdx;
+					s << " line:"<<line<<" file:" << (file ?:"");
 					(*disp)++;
 				}
 				break;
 			case DW_TAG_typedef:
 				if (verbose || name) {
-					LOG("<"<<depth<<">["<<offset<<"]  Tag:DW_TAG_typedef #"<<tag<<" name:"<<(name ?: ""));
+					const char *tagName = "DW_TAG_typedef";
+					const char *file = dwarf_decl_file(die);
+					int line = -1;
+					dwarf_decl_line(die, &line);
+					unsigned typeOff = 0;
+					Dwarf_Die typeDie;
+					Dwarf_Attribute typeAttr;
+					if (dwarf_attr(die, DW_AT_type, &typeAttr)) {
+						if (dwarf_formref_die(&typeAttr, &typeDie)) {
+							Dwarf_Off offset = dwarf_dieoffset(&typeDie);
+							typeOff = offset;
+						}
+					}
+					s << offset<<push<<" "<<tagName<<" #"<<tag;
+					s << " name:'"<<(name ?: "")<<"'";
+					s << " ref:"<<typeOff;
+					s << " line:"<<line<<" file:" << (file ?:"");
 					(*disp)++;
 				}
 				break;
 			case DW_TAG_array_type:
 				if (verbose || name) {
-					LOG("<"<<depth<<">["<<offset<<"]  Tag:DW_TAG_array_type #"<<tag<<" name:"<<(name ?: ""));
+					const char *tagName = "DW_TAG_array_type";
+					s << offset<<push<<" "<<tagName<<" #"<<tag;
+					s << " name:'"<<(name ?: "")<<"'";
 					(*disp)++;
 				}
 				break;
 			case DW_TAG_enumeration_type:
 				if (verbose || name) {
-					LOG("<"<<depth<<">["<<offset<<"]  Tag:DW_TAG_enumeration_type #"<<tag<<" name:"<<(name ?: ""));
+					const char *tagName = "DW_TAG_enumeration_type";
+					s << offset<<push<<" "<<tagName<<" #"<<tag;
+					s << " name:'"<<(name ?: "")<<"'";
 					(*disp)++;
 				}
 				break;
 			case DW_TAG_formal_parameter:
 				if (verbose || name) {
+					const char *tagName = "DW_TAG_formal_parameter";
 					unsigned typeOff = 0;
 					Dwarf_Attribute typeAttr;
 					Dwarf_Die typeDie;
@@ -660,12 +700,15 @@ void Pdb::DebugDumpKid(Dwarf_Die *die, unsigned depth, unsigned *cnt, unsigned *
 							typeOff = offset;
 						}
 					}
-					LOG("<"<<depth<<">["<<offset<<"]  Tag:DW_TAG_formal_parameter #"<<tag<<" name:"<<(name ?: "")<<" type:"<<typeOff);
+					s << offset<<push<<" "<<tagName<<" #"<<tag;
+					s << " name:'"<<(name ?: "")<<"'";
+					s << " ref:"<<typeOff;
 					(*disp)++;
 				}
 				break;
 			case DW_TAG_pointer_type:
 				if (verbose || name) {
+					const char *tagName = "DW_TAG_pointer_type";
 					unsigned typeOff = 0;
 					Dwarf_Attribute typeAttr;
 					Dwarf_Die typeDie;
@@ -675,18 +718,23 @@ void Pdb::DebugDumpKid(Dwarf_Die *die, unsigned depth, unsigned *cnt, unsigned *
 							typeOff = offset;
 						}
 					}
-					LOG("<"<<depth<<">["<<offset<<"]  Tag:DW_TAG_pointer_type #"<<tag<<" name:"<<(name ?: "")<<" type:"<<typeOff);
+					s << offset<<push<<" "<<tagName<<" #"<<tag;
+					s << " name:'"<<(name ?: "")<<"'";
+					s << " Ref:"<<typeOff;
 					(*disp)++;
 				}
 				break;
 			case DW_TAG_subrange_type:
 				if (verbose || name) {
-					LOG("<"<<depth<<">["<<offset<<"]  Tag:DW_TAG_subrange_type #"<<tag<<" name:"<<(name ?: ""));
+					const char *tagName = "DW_TAG_subrange_type";
+					s << offset<<push<<" "<<tagName<<" #"<<tag;
+					s << " name:'"<<(name ?: "")<<"'";
 					(*disp)++;
 				}
 				break;
 			case DW_TAG_const_type:
 				if (verbose || name) {
+					const char *tagName = "DW_TAG_const_type";
 					unsigned typeOff = 0;
 					Dwarf_Attribute typeAttr;
 					Dwarf_Die typeDie;
@@ -696,42 +744,55 @@ void Pdb::DebugDumpKid(Dwarf_Die *die, unsigned depth, unsigned *cnt, unsigned *
 							typeOff = offset;
 						}
 					}
-					LOG("<"<<depth<<">["<<offset<<"]  Tag:DW_TAG_const_type #"<<tag<<" name:"<<(name ?: "")<<" type:"<<typeOff);
+					s << offset<<push<<" "<<tagName<<" #"<<tag;
+					s << " name:'"<<(name ?: "")<<"'";
+					s << " ref:"<<typeOff;
 					(*disp)++;
 				}
 				break;
 			case DW_TAG_imported_module:
 				if (verbose || name) {
-					LOG("<"<<depth<<">["<<offset<<"]  Tag:DW_TAG_imported_module #"<<tag<<" name:"<<(name ?: ""));
+					const char *tagName = "DW_TAG_imported_module";
+					s << offset<<push<<" "<<tagName<<" #"<<tag;
+					s << " name:'"<<(name ?: "")<<"'";
 					(*disp)++;
 				}
 				break;
 			case DW_TAG_reference_type:
 				if (verbose || name) {
-					LOG("<"<<depth<<">["<<offset<<"]  Tag:DW_TAG_reference_type #"<<tag<<" name:"<<(name ?: ""));
+					const char *tagName = "DW_TAG_reference_type";
+					s << offset<<push<<" "<<tagName<<" #"<<tag;
+					s << " name:'"<<(name ?: "")<<"'";
 					(*disp)++;
 				}
 				break;
 			case DW_TAG_imported_declaration:
 				if (verbose || name) {
-					LOG("<"<<depth<<">["<<offset<<"]  Tag:DW_TAG_imported_declaration #"<<tag<<" name:"<<(name ?: ""));
+					const char *tagName = "DW_TAG_imported_declaration";
+					s << offset<<push<<" "<<tagName<<" #"<<tag;
+					s << " name:'"<<(name ?: "")<<"'";
 					(*disp)++;
 				}
 				break;
 			case DW_TAG_base_type:
 				if (verbose || name) {
-					LOG("<"<<depth<<">["<<offset<<"]  Tag:DW_TAG_base_type #"<<tag<<" name:"<<(name ?: ""));
+					const char *tagName = "DW_TAG_base_type";
+					s << offset<<push<<" "<<tagName<<" #"<<tag;
+					s << " name:'"<<(name ?: "")<<"'";
 					(*disp)++;
 				}
 				break;
 			case DW_TAG_namespace:
 				if (verbose || name) {
-					LOG("<"<<depth<<">["<<offset<<"]  Tag:DW_TAG_namespace #"<<tag<<" name:"<<(name ?: ""));
+					const char *tagName = "DW_TAG_namespace";
+					s << offset<<push<<" "<<tagName<<" #"<<tag;
+					s << " name:'"<<(name ?: "")<<"'";
 					(*disp)++;
 				}
 				break;
 			case DW_TAG_inheritance:
 				if (verbose || name) {
+					const char *tagName = "DW_TAG_inheritance";
 					unsigned typeOff = 0;
 					Dwarf_Attribute typeAttr;
 					if (dwarf_attr(die, DW_AT_type, &typeAttr)) {
@@ -741,22 +802,46 @@ void Pdb::DebugDumpKid(Dwarf_Die *die, unsigned depth, unsigned *cnt, unsigned *
 							typeOff = offset;
 						}
 					}
-					LOG("<"<<depth<<">["<<offset<<"]  Tag:DW_TAG_inheritance #"<<tag<<" name:"<<(name ?: "")<<" type:"<<typeOff);
+					s << offset<<push<<" "<<tagName<<" #"<<tag;
+					s << " name:'"<<(name ?: "")<<"'";
+					s << " ref:"<<typeOff;
 					(*disp)++;
 				}
 				break;
 			case DW_TAG_namelist:
 				if (verbose || name) {
-					LOG("<"<<depth<<">["<<offset<<"]  Tag:DW_TAG_namelist #"<<tag<<" name:"<<(name ?: ""));
+					const char *tagName = "DW_TAG_namelist";
+					s << offset<<push<<" "<<tagName<<" #"<<tag;
+					s << " name:'"<<(name ?: "")<<"'";
+					(*disp)++;
+				}
+				break;
+			case DW_TAG_template_type_parameter:
+				if (verbose || name) {
+					const char *tagName = "DW_TAG_template_type_parameter";
+					s << offset<<push<<" "<<tagName<<" #"<<tag;
+					s << " name:'"<<(name ?: "")<<"'";
+					(*disp)++;
+				}
+				break;
+			case DW_TAG_template_value_parameter:
+				if (verbose || name) {
+					const char *tagName = "DW_TAG_template_value_parameter";
+					s << offset<<push<<" "<<tagName<<" #"<<tag;
+					s << " name:'"<<(name ?: "")<<"'";
 					(*disp)++;
 				}
 				break;
 			default:
 				if (verbose || name) {
-					LOG("<"<<depth<<">["<<offset<<"]  Tag:#" << tag<<" name:"<<(name ?: ""));
+					s << offset<<push<<"  #"<<tag;
+					s << " name:'"<<(name ?: "")<<"'";
 					(*disp)++;
 				}
 				break;
+		}
+		if (*s) {
+			LOG(s);
 		}
 		Dwarf_Die kid;
 		if (dwarf_child(die, &kid) == 0) {

@@ -2,7 +2,7 @@
 
 #ifdef PLATFORM_WIN32
 #else
-#include <dlfcn.h>
+//#include <dlfcn.h>
 #include <dwarf.h>
 #include <cxxabi.h>
 #include <sys/ptrace.h>
@@ -132,12 +132,12 @@ adr_t Pdb::GetAddress(FilePos p)
 		}
 		off = next;
 	}
-	Dl_info info;
-	if(adr && dladdr((void*)adr, &info)) {
-		adr_t pc = adr + (adr_t)info.dli_fbase;
-		LLOG("GetAddress " << p.path << "(" << pline << "): 0x" << Hex(pc));
-		return pc;
-	}
+//	Dl_info info;
+//	if(adr && dladdr((void*)adr, &info)) {
+//		adr_t pc = adr + (adr_t)info.dli_fbase;
+//		LLOG("GetAddress " << p.path << "(" << pline << "): 0x" << Hex(pc));
+//		return pc;
+//	}
 	if (adr) {
 		adr_t pc = adr + baseAddress;
 		LLOG("GetAddress " << p.path << "(" << pline << "): 0x" << Hex(pc));
@@ -545,7 +545,7 @@ int Pdb::GetValType(Dwarf_Die& die) {
 	}
 	else {
 		const char *typeName = dwarf_diename(&die);
-		DLOG("\t\t typeName:"<<(typeName?:""));
+		DLOG("\t\t\t typeName:"<<(typeName?:""));
 	}
 	return valType;
 }
@@ -556,6 +556,8 @@ bool Pdb::GetTypeVal(Pdb::Val* val, Dwarf_Die die) {
 	const char *name = dwarf_diename(&die);
 	const char *tagName = 0;
 	switch(tag) {
+		case DW_TAG_typedef:
+			if (!tagName) tagName = "DW_TAG_typedef";
 		case DW_TAG_member:
 			if (!tagName) tagName = "DW_TAG_member";
 		case DW_TAG_inheritance:
@@ -568,12 +570,16 @@ bool Pdb::GetTypeVal(Pdb::Val* val, Dwarf_Die die) {
 				const char *file = dwarf_decl_file(&die);
 				int line = -1;
 				dwarf_decl_line(&die, &line);
-				LOG("\t\t Tag:"<<tagName<<" #"<<tag<<" line:"<<line<<" file:" << (file ?:"") << " Name:"<<(name ?: ""));
+				LLOG("\t\t "<<tagName<<" #"<<tag<<" Ref:"<<dwarf_dieoffset(&die)<<" line:"<<line<<" file:"<<(file ?:"")<<" Name:"<<(name ?: ""));
 				// Get variable type info
 				int valType = UNKNOWN; // enum { UNKNOWN = -99, BOOL1, SINT1, UINT1, SINT2, UINT2, SINT4, UINT4, SINT8, UINT8, FLT, DBL, PFUNC };
 				int ref = 0;
-				bool udt = false;
+				bool reference = false;
+				bool udt = false; // User defined type
+				bool ptr = false;
+				bool self = false;
 				bool array = false;
+				bool constance = false;
 				Dwarf_Word typeSz = 0;
 				Dwarf_Word rptSz = 0;
 				Dwarf_Word arrayCnt = 0;
@@ -582,18 +588,35 @@ bool Pdb::GetTypeVal(Pdb::Val* val, Dwarf_Die die) {
 				if (dwarf_attr(&die, DW_AT_type, &typeAttr)) {
 					if (dwarf_formref_die(&typeAttr, &typeDie)) {
 						int typeTag = dwarf_tag(&typeDie);
-						if (typeTag==DW_TAG_pointer_type) {
+						if (typeTag==DW_TAG_pointer_type || typeTag==DW_TAG_reference_type) {
 							ref = 1;
+							reference = typeTag==DW_TAG_reference_type;
+							LLOG("\t\t\t "<<(reference?"reference":"pointer"));
+							ptr = !reference;
 							// Get the baseType of pointer
 							if (dwarf_attr(&typeDie, DW_AT_type, &typeAttr)) {
 								Dwarf_Die subTypeDie;
 								if (dwarf_formref_die(&typeAttr, &subTypeDie)) {
 									valType = GetValType(subTypeDie);
+									if (valType == UNKNOWN) {
+										// Must be a struct type
+										valType = GetTypeIndex(0,dwarf_dieoffset(&subTypeDie)); // Get custom val type
+										Type& t = type[valType];
+										t.die = subTypeDie;
+										Dwarf_Attribute sizeAttr;
+										if (dwarf_attr(&subTypeDie, DW_AT_byte_size, &sizeAttr)) {
+											dwarf_formudata(&sizeAttr, &rptSz);
+										}
+										udt = true;
+										if (name && strcmp(name,"this")==0) {
+											self = true;
+										}
+									}
 								}
 							}
 						}
 						else if (typeTag==DW_TAG_class_type || typeTag==DW_TAG_structure_type) {
-							LLOG("\t\t\t "<<(typeTag==DW_TAG_class_type?"class":"struct") << " DIE offset:"<<dwarf_dieoffset(&typeDie));
+							LLOG("\t\t\t "<<(typeTag==DW_TAG_class_type?"class":"struct")<<" Ref:"<<dwarf_dieoffset(&typeDie));
 							valType = GetTypeIndex(0,dwarf_dieoffset(&typeDie)); // Get custom val type
 							Type& t = type[valType];
 							t.die = typeDie;
@@ -601,10 +624,21 @@ bool Pdb::GetTypeVal(Pdb::Val* val, Dwarf_Die die) {
 							if (dwarf_attr(&typeDie, DW_AT_byte_size, &sizeAttr)) {
 								dwarf_formudata(&sizeAttr, &rptSz);
 							}
+							Dwarf_Attribute ccAttr;
+							Dwarf_Word cc;
+							// Check calling convention is by reference
+							if (dwarf_attr(&typeDie, DW_AT_calling_convention, &ccAttr) != NULL) {
+								if (dwarf_formudata(&ccAttr, &cc) == 0) {
+									if (cc == DW_CC_pass_by_reference) {
+										reference = true;
+									}
+								}
+							}
 							udt = true;
 						}
 						else if (typeTag==DW_TAG_array_type) {
-							//LLOG("\t\t\t array");
+							LLOG("\t\t\t array");
+							ref = 1;
 							Dwarf_Die typeKid;
 							if (dwarf_child(&typeDie, &typeKid) == 0) {
 								int typeKidTag = dwarf_tag(&typeKid);
@@ -619,12 +653,39 @@ bool Pdb::GetTypeVal(Pdb::Val* val, Dwarf_Die die) {
 							if (dwarf_attr(&typeDie, DW_AT_type, &typeAttr)) {
 								Dwarf_Die subTypeDie;
 								if (dwarf_formref_die(&typeAttr, &subTypeDie)) {
-										valType = GetValType(subTypeDie);
+									valType = GetValType(subTypeDie);
+									if (valType == UNKNOWN) {
+										// Must be a struct type
+										valType = GetTypeIndex(0,dwarf_dieoffset(&subTypeDie)); // Get custom val type
+										Type& t = type[valType];
+										t.die = subTypeDie;
+										Dwarf_Attribute sizeAttr;
+										if (dwarf_attr(&subTypeDie, DW_AT_byte_size, &sizeAttr)) {
+											dwarf_formudata(&sizeAttr, &rptSz);
+										}
+										udt = true;
+									}
 								}
 							}
 							array = true;
 						}
-						if (typeTag==DW_TAG_base_type) {
+						else if (typeTag==DW_TAG_typedef) {
+							// Get the real type
+							if (dwarf_attr(&typeDie, DW_AT_type, &typeAttr)) {
+								Dwarf_Die subTypeDie;
+								if (dwarf_formref_die(&typeAttr, &subTypeDie)) {
+									valType = GetValType(subTypeDie);
+									if (valType == UNKNOWN) {
+										// Must be a struct type
+										valType = GetTypeIndex(0,dwarf_dieoffset(&subTypeDie)); // Get custom val type
+										Type& t = type[valType];
+										t.die = subTypeDie;
+										udt = true;
+									}
+								}
+							}
+						}
+						else if (typeTag==DW_TAG_base_type) {
 							valType = GetValType(typeDie);
 						}
 					}
@@ -634,6 +695,8 @@ bool Pdb::GetTypeVal(Pdb::Val* val, Dwarf_Die die) {
 						val->array = array;
 						val->udt = udt;
 						val->ref = ref;
+						val->reference = reference || self; // Self prevents visual from showing an array of this
+						val->rvalue = !(reference || ptr);
 						if (array) {
 							unsigned sz = typeSz;
 							if (sz == 0) {
@@ -664,6 +727,9 @@ bool Pdb::GetTypeVal(Pdb::Val* val, Dwarf_Die die) {
 							rptSz = sz * arrayCnt;
 						}
 						val->reported_size = rptSz;
+//						if (reference && ref<=0) {
+//							val->ref = 1; // Ensure this is set for a reference type
+//						}
 						ok = true; // Set type
 				}
 				// Get variable location
@@ -672,59 +738,19 @@ bool Pdb::GetTypeVal(Pdb::Val* val, Dwarf_Die die) {
 				Dwarf_Attribute locAttr;
 				dwarf_attr(&die, DW_AT_location, &locAttr);
 				if (dwarf_getlocation(&locAttr, &expr, &cnt) == 0) {
+					uint64 adr = 0;
+					// Evaluate Dwarf expressions
 					for (size_t i = 0; i < cnt; ++i) {
 						Dwarf_Op &exp = expr[i];
 						LLOG("\t\t Op:" << (int)exp.atom << " Val1: " << exp.number << " Val2: " << exp.number2);
-						if (DW_OP_lit0 <= exp.atom && exp.atom <= DW_OP_lit31) { // Literal encodings - Push the literal value on to the stack
-							NEVER();
-						}
-						else if (exp.atom == DW_OP_addr) { // Literal encodings - Pushes the address operand on to the stack
-							NEVER();
-						}
-						else if (exp.atom == DW_OP_constu) { // Literal encodings - Pushes the unsigned value on to the stack
-							NEVER();
-						}
-						else if (exp.atom == DW_OP_fbreg) { // Register values - Pushes the value found at the base of the stack frame, offset by the given value
+						if (exp.atom == DW_OP_fbreg) { // Variable at frame base register offset
 							int64 reg = exp.number;
 							int64 offset = exp.number2;
 							adr_t bp = context.GetBP();
-							uint64 adr = bp+offset+reg;
-							uint64 v = ptrace(PTRACE_PEEKDATA, debug_threadid, adr, 0);
-							LLOG("\t\t\t bp:0x" << Hex(bp) << " r:0x" << Hex(reg) << " offset:" << offset << " address: 0x" << Hex(adr) << " value:" << v);
-							if (array) {
-								val->address = adr;
-							}
-							else {
-								if (valType==DBL) {
-									#ifdef CPU_64
-									#else
-									uint64 v2 = ptrace(PTRACE_PEEKDATA, debug_threadid, bp+reg+4, 0); // With older 32bit CPU double must be spread across 2 long words
-									v |= v2<<4;
-									#endif
-									double d;
-									memcpy(&d, &v, sizeof d);
-									val->fval = d;
-									val->rvalue = true;
-								}
-								else if (valType==FLT) {
-									float f;
-									memcpy(&f, &v, sizeof f);
-									val->fval = f;
-									val->rvalue = true;
-								}
-								else if (valType>=0) {
-									// This is a custom val type
-									Type& t = type[valType];
-									t.modbase = adr;
-								}
-								else {
-									val->ival = v;
-									val->rvalue = true;
-								}
-							}
+							adr = bp+offset+reg;
 							ok = true; // Value is set
 						}
-						else if (DW_OP_breg0 <= exp.atom && exp.atom <= DW_OP_breg31) { // Register values - Pushes the contents of the given register plus the given offset to the stack
+						else if (DW_OP_breg0 <= exp.atom && exp.atom <= DW_OP_breg31) { // variable at the given register plus the given offset to the stack
 							int64 reg = exp.number;
 							int64 offset = exp.number2;
 							user_regs_struct regs;
@@ -761,41 +787,41 @@ bool Pdb::GetTypeVal(Pdb::Val* val, Dwarf_Die die) {
 								default: r = 0; break;
 							}
 							#endif
-							uint64 adr = r+offset+reg;
-							uint64 v = ptrace(PTRACE_PEEKDATA, debug_threadid, adr, 0);
-							LLOG("\t\t\t r:0x" << Hex(r) << " reg:0x" << Hex(reg) << " offset:" << offset << " address: 0x" << Hex(adr) << " value:" << v);
-							if (array) {
-								val->address = adr;
-							}
-							else {
-								if (valType==DBL) {
-									#ifdef CPU_64
-									#else
-									uint64 v2 = ptrace(PTRACE_PEEKDATA, debug_threadid, r+reg+4, 0); // With older 32bit CPU double must be spread across 2 long words
-									v |= v2<<4;
-									#endif
-									double d;
-									memcpy(&d, &v, sizeof d);
-									val->fval = d;
-									val->rvalue = true;
-								}
-								else if (valType==FLT) {
-									float f;
-									memcpy(&f, &v, sizeof f);
-									val->fval = f;
-									val->rvalue = true;
-								}
-								else if (valType>=0) {
-									// This is a custom val type
-									Type& t = type[valType];
-									t.modbase = adr;
-								}
-								else {
-									val->ival = v;
-									val->rvalue = true;
-								}
-							}
+							adr = r+offset+reg;
 							ok = true; // Value is set
+						}
+						else if (exp.atom == DW_OP_addrx || exp.atom == DW_OP_GNU_addr_index) { // Variable in CU list at offset
+// Todo - fixme - needed for globals like int GlobalInt = -23;
+							int64 offset = exp.number;
+							#ifdef CPU_64
+							unsigned sz = 8;
+							#else
+							unsigned sz = 4;
+							#endif
+							adr = baseAddress + cuBaseAddress + offset*sz;
+LLOG("\t\t\t ***  cuBaseAddress:0x" << Hex(cuBaseAddress) << " offset:" << offset << " address: 0x" << Hex(adr));
+							const size_t nlocs = 32;
+							Dwarf_Op nexprs[nlocs];
+							size_t exprlens = 0;
+							Dwarf_Addr pc = context.GetIP();
+							int ncnt = dwarf_getlocation_addr(&locAttr, pc, (Dwarf_Op**)&nexprs, &exprlens, nlocs);
+							if (i<ncnt) {
+								offset = nexprs[i].number;
+							adr = offset;
+LLOG("\t\t\t *** i:"<<i<<" cnt:"<<cnt<<" offset:" << offset << " address: 0x" << Hex(adr));
+							}
+						}
+						else if (DW_OP_lit0 <= exp.atom && exp.atom <= DW_OP_lit31) { // Literal encodings, value is  on to the stack
+							NEVER();
+						}
+						else if (exp.atom == DW_OP_addr) { // Literal encodings, value at address
+							NEVER();
+						}
+						else if (exp.atom == DW_OP_constu) { // Literal encodings, unsigned value on to the stack
+							NEVER();
+						}
+						else if (exp.atom == DW_OP_stack_value) { // Value is on top of stack
+							NEVER();
 						}
 						else if (exp.atom == DW_OP_dup) { // Stack operations - Duplicate the value at the top of the stack
 							NEVER();
@@ -822,41 +848,37 @@ bool Pdb::GetTypeVal(Pdb::Val* val, Dwarf_Die die) {
 							LLOG("\t\t Unknown variable location");
 							NEVER();
 						}
+						if (ok) {
+							uint64 v = ptrace(PTRACE_PEEKDATA, debug_threadid, adr, 0);
+							LLOG("\t\t\t address: 0x" << Hex(adr) << " value:" << v << " 0x" << Hex(v));
+							if (array | ref | udt) {
+								val->address = adr;
+							}
+							else {
+								if (valType==DBL) {
+									#ifdef CPU_64
+									#else
+									uint64 v2 = ptrace(PTRACE_PEEKDATA, debug_threadid, adr+4, 0); // With older 32bit CPU double must be spread across 2 long words
+									v |= v2<<4;
+									#endif
+									double d;
+									memcpy(&d, &v, sizeof d);
+									val->fval = d;
+								}
+								else if (valType==FLT) {
+									float f;
+									memcpy(&f, &v, sizeof f);
+									val->fval = f;
+								}
+								else if (valType<0) {
+									val->ival = (int64)v;
+								}
+							}
+						}
 					}
 				}
 			}
 			break;
-//		case DW_TAG_structure_type:
-//		case DW_TAG_class_type:
-//			if (name) {
-//				LOG("\t Tag:"<<((tag==DW_TAG_class_type)?"class":"struct")<<" #"<<tag<<" Name:"<<(name ?: ""));
-//			}
-//			break;
-//		case DW_TAG_typedef:
-//			if (name) {
-//				LOG("\t Tag:DW_TAG_typedef #"<<tag<<" Name:"<<(name ?: ""));
-//			}
-//			break;
-//		case DW_TAG_array_type:
-//			if (name) {
-//				LOG("\t Tag:DW_TAG_array_type #"<<tag<<" Name:"<<(name ?: ""));
-//			}
-//			break;
-//		case DW_TAG_enumeration_type:
-//			if (name) {
-//				LOG("\t Tag:DW_TAG_enumeration_type #"<<tag<<" Name:"<<(name ?: ""));
-//			}
-//			break;
-//		case DW_TAG_pointer_type:
-//			if (name) {
-//				LOG("\t Tag:DW_TAG_pointer_type #"<<tag<<" Name:"<<(name ?: ""));
-//			}
-//			break;
-//		case DW_TAG_const_type:
-//			if (name) {
-//				LOG("\t Tag:DW_TAG_const_type #"<<tag<<" Name:"<<(name ?: ""));
-//			}
-//			break;
 		}
 	return ok;
 }
@@ -883,7 +905,7 @@ void Pdb::GetLocals(Frame& frame, Context& context, VectorMap<String, Pdb::Val>&
 	adr_t bp = context.GetBP();
 	adr_t sp = context.GetSP();
   Dwarf_Addr addr = ip - baseAddress;
-	LOG("Pdb::GetLocals ip:0x"<<Hex(ip)<<" baseAddress:0x"<<Hex(baseAddress)<< " addr:0x"<<Hex(addr));
+	LLOG("Pdb::GetLocals ip:0x"<<Hex(ip)<<" baseAddress:0x"<<Hex(baseAddress)<<" addr:0x"<<Hex(addr));
 	Dwarf_Off off = 0;
 	Dwarf_Off next;
 	size_t hdrSz;
@@ -891,6 +913,14 @@ void Pdb::GetLocals(Frame& frame, Context& context, VectorMap<String, Pdb::Val>&
 	while (dwarf_nextcu(dwarf, off, &next, &hdrSz, NULL, NULL, NULL) == 0) {
 		Dwarf_Die cu;
 		if (dwarf_offdie(dwarf, off + hdrSz, &cu) != NULL) {
+			Dwarf_Attribute attr;
+			if (dwarf_attr(&cu, DW_AT_addr_base, &attr) != NULL) {
+				Dwarf_Word base;
+				dwarf_formudata(&attr, &base);
+				cuBaseAddress = base;
+			}
+			else
+				cuBaseAddress = 0;
 			// Iterate over children DIEs
 			Dwarf_Die die; // Debugging Information Entry (DIE)
 			if (dwarf_child(&cu, &die) == 0) {
@@ -900,12 +930,13 @@ void Pdb::GetLocals(Frame& frame, Context& context, VectorMap<String, Pdb::Val>&
 					switch(tag) {
 						case DW_TAG_subprogram:
 							if(dwarf_haspc(&die, addr)) {
+								// This must be the function the cursor is a in, now get all the children variables associated with it
 								Dwarf_Addr loAdr=0;
 								dwarf_lowpc(&die, &loAdr);
 								Dwarf_Addr hiAdr=0;
 								dwarf_highpc(&die, &hiAdr);
 								unsigned size = hiAdr - loAdr;
-								LOG("\t Tag:DW_TAG_subprogram #"<<tag<<" loAdr:0x"<<Hex(loAdr)<<" size:"<<(hiAdr-loAdr)<< " Name:"<<(fnName ?: ""));
+								LLOG("\t Tag:DW_TAG_subprogram #"<<tag<<" loAdr:0x"<<Hex(loAdr)<<" size:"<<(hiAdr-loAdr)<< " Name:"<<(fnName ?: ""));
 								Dwarf_Die kid;
 								if (dwarf_child(&die, &kid) == 0) {
 									do {
@@ -915,8 +946,10 @@ void Pdb::GetLocals(Frame& frame, Context& context, VectorMap<String, Pdb::Val>&
 											const char *name = dwarf_diename(&kid);
 											if(tag == DW_TAG_formal_parameter) {
 												param.Add(name,val);
+												LLOG("\t\t added parameter variable "<<name<<" val:"<<val<<" address:0x"<<Hex(val.address)<<" ival:"<<val.ival);
 											} else {
 												local.Add(name,val);
+												LLOG("\t\t added local variable "<<name<<" val:"<<val<<" address:0x"<<Hex(val.address)<<" ival:"<<val.ival);
 											}
 										}
 									} while (dwarf_siblingof(&kid, &kid) == 0);
@@ -952,12 +985,55 @@ int CALLBACK Pdb::EnumGlobals(PSYMBOL_INFO pSym, unsigned long SymbolSize, void*
 void Pdb::LoadGlobals(uint64 base)
 {
 #ifdef PLATFORM_WIN32
+
 	LocalsCtx c;
 	c.pdb = this;
 	c.context = &context;
 	SymEnumSymbols(hProcess, base, NULL, &EnumGlobals, &c);
+
 #else
-	NEVER(); // Todo Dwarf implementation
+
+	LLOG("Pdb::LoadGlobals");
+	Dwarf_Off off = 0;
+	Dwarf_Off next;
+	size_t hdrSz;
+	// Iterate over compilation units (CU)
+	while (dwarf_nextcu(dwarf, off, &next, &hdrSz, NULL, NULL, NULL) == 0) {
+		Dwarf_Die cu;
+		if (dwarf_offdie(dwarf, off + hdrSz, &cu) != NULL) {
+			Dwarf_Attribute attr;
+			if (dwarf_attr(&cu, DW_AT_addr_base, &attr) != NULL) {
+				Dwarf_Word base;
+				dwarf_formudata(&attr, &base);
+				cuBaseAddress = base;
+			}
+			else
+				cuBaseAddress = 0;
+			// Iterate over children DIEs
+			Dwarf_Die die; // Debugging Information Entry (DIE)
+			if (dwarf_child(&cu, &die) == 0) {
+				do {
+					int tag = dwarf_tag(&die);
+					const char *fnName = dwarf_diename(&die);
+					if (tag == DW_TAG_variable) {
+						Dwarf_Attribute attrGlobal;
+						// Check if it's external (global)
+						if (dwarf_attr(&die, DW_AT_external, &attrGlobal)) {
+							Pdb::Val val;
+							if (GetTypeVal(&val, die)) {
+								int tag = dwarf_tag(&die);
+								const char *name = dwarf_diename(&die);
+								global.Add(name,val);
+								LLOG("Pdb::LoadGlobals - added global variable " << name);
+							}
+						}
+					}
+				} while (dwarf_siblingof(&die, &die) == 0);
+			}
+		}
+		off = next;
+	}
+
 #endif
 }
 
@@ -1003,7 +1079,7 @@ int Pdb::GetTypeIndex(adr_t modbase, dword typeindex)
 	if(q < 0) {
 		q = type.GetCount();
 		type.Add(typeindex).modbase = modbase;
-		//LLOG("Pdb::GetTypeIndex added new type "<<type.GetCount());
+		//LLOG("Pdb::GetTypeIndex added new type "<<type.GetCount() << " DIE Dwarf offset:"<<typeindex);
 	}
 	return q;
 }
@@ -1048,6 +1124,7 @@ const Pdb::Type& Pdb::GetType(int ti)
 								v.bitcnt = (byte)bitcnt;
 								v.bitpos = (byte)GetSymInfo(t.modbase, ch, TI_GET_BITPOSITION);
 							}
+							LLOG("\t To "<<t.name<<" added new type member "<<t.member.GetCount()<<" "<<name<<" value:"<<val);
 						}
 						if(kind == DataIsStaticMember || kind == DataIsGlobal) {
 							Val& v = t.static_member.Add(name);
@@ -1085,7 +1162,7 @@ const Pdb::Type& Pdb::GetType(int ti)
 #else
 
 	// Dwarf implementation
-	//LLOG("PDB::GetType ("<<ti<<')');
+	LLOG("PDB::GetType ("<<ti<<')'<<" of "<<type.GetCount());
 	if(t.size < 0) {
 		t.name = dwarf_diename(&t.die);
 		Dwarf_Word size = -1;
@@ -1096,10 +1173,12 @@ const Pdb::Type& Pdb::GetType(int ti)
 		}
 		Dwarf_Die kid;
 		if (dwarf_child(&t.die, &kid) == 0) {
+			t.member.Clear();
 			do {
 				int tag = dwarf_tag(&kid);
 				const char *name = dwarf_diename(&kid);
 				switch(tag) {
+					//LLOG("\t Tag:#" << tag<<" Ref:"<<dwarf_dieoffset(&kid)<<" name:"<<(name ?: ""));
 					case DW_TAG_member: {
 							Dwarf_Attribute locAttr;
 							Dwarf_Word locOff = 0;
@@ -1108,14 +1187,12 @@ const Pdb::Type& Pdb::GetType(int ti)
 							}
 							Pdb::Val val;
 							if (GetTypeVal(&val, kid)) {
-								if (val.type<0) {
-									adr_t at = t.modbase + locOff;
-									uint64 v = ptrace(PTRACE_PEEKDATA, mainThreadId, at, 0);
-									LLOG("\t class member "<<name<<" locOff:"<<locOff<<" address 0x:" << Hex(at) << " value:" << v);
-									val.ival = v;
-									val.rvalue = true;
+								val.address = locOff;
+								val.rvalue = false;
+								if (name && *name) {
+									t.member.Add(name,val);
+									LLOG("\t To '"<<t.name<<"' added new type member "<<t.member.GetCount()<<" '"<<name<<"' val:"<<val<<" ival:"<<val.ival<<" 0x:"<<Hex(val.ival));
 								}
-								t.member.Add(name,val);
 							}
 						}
 						break;
@@ -1127,17 +1204,44 @@ const Pdb::Type& Pdb::GetType(int ti)
 							}
 							Pdb::Val val;
 							if (GetTypeVal(&val, kid)) {
-								if (val.type<0) {
-									adr_t at = t.modbase + locOff;
-									uint64 v = ptrace(PTRACE_PEEKDATA, mainThreadId, at, 0);
-									LLOG("\t class inheritance "<<name<<" locOff:"<<locOff<<" address 0x:" << Hex(at) << " value:" << v);
-									val.ival = v;
-									val.rvalue = true;
+								val.address = locOff;
+								val.rvalue = false;
+								if (!(name && *name)) {
+									Dwarf_Attribute typeAttr;
+									if (dwarf_attr(&kid, DW_AT_type, &typeAttr)) {
+										Dwarf_Die sub;
+										if (dwarf_formref_die(&typeAttr, &sub)) {
+											name = dwarf_diename(&sub);
+										}
+									}
 								}
-								t.member.Add(name,val);
+								if (name && *name) {
+									t.member.Add(name,val);
+									LLOG("\t To '"<<t.name<<"' added new inheritance type member "<<t.member.GetCount()<<" '"<<name<<"' val:"<<val<<" ival:"<<val.ival<<" 0x:"<<Hex(val.ival));
+								}
 							}
 						}
 						break;
+					case DW_TAG_typedef: {
+							Pdb::Val val;
+							if (GetTypeVal(&val, kid)) {
+								if (name && *name) {
+									t.member.Add(name,val);
+									LLOG("\t To '"<<t.name<<"' added new typedef type member "<<t.member.GetCount()<<" '"<<name<<"' value:"<<val);
+								}
+							}
+						}
+						break;
+//					case DW_TAG_template_type_parameter: {
+//							Pdb::Val val;
+//							if (GetTypeVal(&val, kid)) {
+//								if (name && *name) {
+//									t.member.Add(name,val);
+//									LLOG("\t To '"<<t.name<<"' added new template_type_parameter type member "<<t.member.GetCount()<<" '"<<name<<"' value:"<<val);
+//								}
+//							}
+//						}
+//						break;
 				}
 			} while (dwarf_siblingof(&kid, &kid) == 0);
 		}
@@ -1296,5 +1400,3 @@ String Pdb::TypeAsString(int ti, bool deep)
 }
 
 #endif
-
-//#endif

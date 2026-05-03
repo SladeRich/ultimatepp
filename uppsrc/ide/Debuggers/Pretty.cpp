@@ -1,7 +1,5 @@
 #include "Debuggers.h"
 
-//#ifdef PLATFORM_WIN32
-
 Pdb::Val Pdb::MakeVal(const String& type, adr_t address)
 {
 	Val item;
@@ -189,5 +187,3 @@ bool Pdb::VisualisePretty(Visual& result, Pdb::Val val, dword flags)
 	}
 	return false;
 }
-
-//#endif

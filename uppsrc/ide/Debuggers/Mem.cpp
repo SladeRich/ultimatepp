@@ -101,5 +101,3 @@ WString Pdb::ReadWString(adr_t addr, int maxlen, bool allowzero)
 	}
 	return r;
 }
-
-//#endif

@@ -1,7 +1,5 @@
 #include "Debuggers.h"
 
-//#ifdef PLATFORM_WIN32
-
 #define LLOG(x)  // DLOG(x)
 
 #ifdef _DEBUG
@@ -88,7 +86,16 @@ case q: { \
 adr_t Pdb::PeekPtr(adr_t address)
 {
 	adr_t r = 0;
-	if(!Copy(address, &r, win64 ? 8 : 4))
+#ifdef PLATFORM_WIN32
+	int sz = win64 ? 8 : 4;
+#else
+	#ifdef CPU_64
+	int sz = 8;
+	#else
+	int sz = 4;
+	#endif
+#endif
+	if(!Copy(address, &r, sz))
 		ThrowError("??");
 	return r;
 }
@@ -669,5 +676,3 @@ Pdb::Val Pdb::Exp(CParser& p)
 		ThrowError("Invalid expression");
 	return v;
 }
-
-//#endif

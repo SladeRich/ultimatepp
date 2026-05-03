@@ -1,7 +1,5 @@
 #include "Debuggers.h"
 
-//#ifdef PLATFORM_WIN32
-
 #define LLOG(x) // LOG(x)
 
 VectorMap<String, Value> Pdb::DataMap(const ArrayCtrl& a)
@@ -399,5 +397,3 @@ void Pdb::DropWatch(PasteClip& clip)
 		Data();
 	}
 }
-
-//#endif

@@ -105,7 +105,8 @@ void Pdb::LoadModuleInfo()
 	UnloadModuleSymbols();
 	module = pick(nm);
 #else
-	LoadGlobals(w);
+	uint64 base = 0;
+	LoadGlobals(base);
 #endif
 
 	refreshmodules = false;

@@ -1,6 +1,6 @@
 #include "Debuggers.h"
 
-//#ifdef PLATFORM_WIN32
+#define LLOG(x)   DLOG(x)
 
 void Pdb::Visual::Cat(const String& text, Color ink)
 {
@@ -116,18 +116,23 @@ void Pdb::CatInt(Visual& result, int64 val, dword flags)
 
 void Pdb::Visualise(Visual& result, Pdb::Val val, dword flags)
 {
-	DR_LOG("Visualise");
-	DLOG("Visualise "<<val);
+	DR_LOG("Visualise val:"<<val<<" address:0x"<<Hex(val.address)<<" ival:"<<val.ival);
+	LLOG("Visualise val:"<<val<<" address:0x"<<Hex(val.address)<<" ival:"<<val.ival);
+if (val.array)
+DLOG("");
 	if(!result.type)
 		result.type = val.type;
 	const int maxlen = 300;
 	if(result.length > maxlen)
 		return;
+//auto a = val.address;
 	if(val.ref > 0 || val.type < 0) // if pointer or primitive type, fetch it from the memory
 		val = GetRVal(val);
 	if(val.ref > 0) {
+//val.address = a;
 		if(!val.reference)
 			result.Cat(Hex(val.address), SLtMagenta);
+//DLOG("0. result:"<<result.GetString()<<" address:0x"<<Hex(val.address));
 		while(val.ref > 1) {
 			val = GetRVal(DeRef(val));
 			if(!val.reference) {
@@ -183,6 +188,7 @@ void Pdb::Visualise(Visual& result, Pdb::Val val, dword flags)
 		}
 		return;
 	}
+//DLOG("4. result:"<<result.GetString()<<" address:0x"<<Hex(val.address));
 	if(val.type < 0) { // Display primitive type
 		#define RESULTINT(x, type) case x: CatInt(result, (type)val.ival, flags); break;
 		#define RESULTINTN(x, type, t2) case x:  if(IsNull((t2)val.ival)) result.Cat("Null ", SCyan); CatInt(result, (type)val.ival, flags); break;
@@ -283,6 +289,7 @@ void Pdb::Visualise(Visual& result, Pdb::Val val, dword flags)
 #endif
 	BaseFields(result, t, val, flags, cm, 0);
 	result.Cat(" }", SColorMark);
+//DLOG("99. result:"<<result.GetString()<<" address:0x"<<Hex(val.address));
 }
 
 void Pdb::BaseFields(Visual& result, const Type& t, Pdb::Val val, dword flags, bool& cm, int depth)
@@ -419,5 +426,3 @@ void Pdb::VisualDisplay::Paint(Draw& w, const Rect& r, const Value& q,
 	}
 	w.DrawRect(x, y, r.right - x, r.Height(), paper);
 }
-
-//#endif

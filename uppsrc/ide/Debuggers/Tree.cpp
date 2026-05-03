@@ -403,5 +403,3 @@ void Pdb::TreeWatch()
 	}
 	AddWatch(tree_exp + "." + exp);
 }
-
-//#endif

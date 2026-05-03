@@ -456,5 +456,3 @@ void Pdb::StepOut()
 	}
 	Unlock();
 }
-
-//#endif
