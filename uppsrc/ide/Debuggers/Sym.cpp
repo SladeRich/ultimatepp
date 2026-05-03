@@ -733,7 +733,7 @@ bool Pdb::GetTypeVal(Pdb::Val* val, Dwarf_Die die) {
 						ok = true; // Set type
 				}
 				// Get variable location
-				Dwarf_Op *expr;
+				Dwarf_Op* expr;
 				size_t cnt;
 				Dwarf_Attribute locAttr;
 				dwarf_attr(&die, DW_AT_location, &locAttr);
@@ -746,8 +746,17 @@ bool Pdb::GetTypeVal(Pdb::Val* val, Dwarf_Die die) {
 						if (exp.atom == DW_OP_fbreg) { // Variable at frame base register offset
 							int64 reg = exp.number;
 							int64 offset = exp.number2;
-							adr_t bp = context.GetBP();
-							adr = bp+offset+reg;
+							adr_t fr;
+							switch(fbReg) {
+								case DW_OP_reg31: // ARM 64 stack pointer register
+									fr = context.GetSP();
+									break;
+								case DW_OP_fbreg:
+								default:
+									fr = context.GetBP();
+									break;
+							}
+							adr = fr+offset+reg;
 							ok = true; // Value is set
 						}
 						else if (DW_OP_breg0 <= exp.atom && exp.atom <= DW_OP_breg31) { // variable at the given register plus the given offset to the stack
@@ -758,7 +767,7 @@ bool Pdb::GetTypeVal(Pdb::Val* val, Dwarf_Die die) {
 							struct iovec iov;
 							iov.iov_base = &regs;
 							iov.iov_len = sizeof(regs);
-							ptrace(PTRACE_GETREGSET, debug_threadid, (void*)NT_PRSTATUS, &iov);
+							ptrace(PTRACE_GETREGSET, debug_threadid, (void*)NT_PRSTATUS, &iov); // ARM does not use PTRACE_GETREGS - must use PTRACE_GETREGSET instead
 							unsigned idx = exp.atom - DW_OP_breg0;
 							uint64 r = regs.regs[idx];
 							#else
@@ -937,6 +946,17 @@ void Pdb::GetLocals(Frame& frame, Context& context, VectorMap<String, Pdb::Val>&
 								dwarf_highpc(&die, &hiAdr);
 								unsigned size = hiAdr - loAdr;
 								LLOG("\t Tag:DW_TAG_subprogram #"<<tag<<" loAdr:0x"<<Hex(loAdr)<<" size:"<<(hiAdr-loAdr)<< " Name:"<<(fnName ?: ""));
+								Dwarf_Attribute fbAttr;
+								fbReg = DW_OP_fbreg;
+								if (dwarf_attr(&die, DW_AT_frame_base, &fbAttr) != NULL) {
+									Dwarf_Op *expr;
+									size_t cnt;
+									if (dwarf_getlocation(&fbAttr, &expr, &cnt) == 0) {
+										for (size_t i = 0; i < cnt; i++) {
+											fbReg = expr[i].atom;
+										}
+									}
+								}
 								Dwarf_Die kid;
 								if (dwarf_child(&die, &kid) == 0) {
 									do {

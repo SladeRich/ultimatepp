@@ -410,6 +410,7 @@ struct Pdb : Debugger, ParentCtrl {
 	Dwarf                       *dwarf;
 	adr_t                       baseAddress;
 	adr_t                       cuBaseAddress;
+	unsigned                    fbReg;
 #endif
 	dword                       mainThreadId;
 	dword                       debug_threadid;
