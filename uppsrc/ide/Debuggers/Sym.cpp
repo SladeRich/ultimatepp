@@ -757,9 +757,8 @@ bool Pdb::GetTypeVal(Pdb::Val* val, Dwarf_Die die) {
 									break;
 							}
 							adr = fr+offset+reg;
-							ok = true; // Value is set
 						}
-						else if (DW_OP_breg0 <= exp.atom && exp.atom <= DW_OP_breg31) { // variable at the given register plus the given offset to the stack
+						else if (DW_OP_breg0 <= exp.atom && exp.atom <= DW_OP_breg31) { // Variable at the given register plus the given offset to the stack
 							int64 reg = exp.number;
 							int64 offset = exp.number2;
 							user_regs_struct regs;
@@ -797,10 +796,9 @@ bool Pdb::GetTypeVal(Pdb::Val* val, Dwarf_Die die) {
 							}
 							#endif
 							adr = r+offset+reg;
-							ok = true; // Value is set
 						}
 						else if (exp.atom == DW_OP_addrx || exp.atom == DW_OP_GNU_addr_index) { // Variable in CU list at offset
-// Todo - fixme - needed for globals like int GlobalInt = -23;
+// Todo - fixme look up .debug_addr table - needed for globals like int GlobalInt = -23;
 							int64 offset = exp.number;
 							#ifdef CPU_64
 							unsigned sz = 8;
@@ -808,17 +806,15 @@ bool Pdb::GetTypeVal(Pdb::Val* val, Dwarf_Die die) {
 							unsigned sz = 4;
 							#endif
 							adr = baseAddress + cuBaseAddress + offset*sz;
-LLOG("\t\t\t ***  cuBaseAddress:0x" << Hex(cuBaseAddress) << " offset:" << offset << " address: 0x" << Hex(adr));
-							const size_t nlocs = 32;
-							Dwarf_Op nexprs[nlocs];
-							size_t exprlens = 0;
-							Dwarf_Addr pc = context.GetIP();
-							int ncnt = dwarf_getlocation_addr(&locAttr, pc, (Dwarf_Op**)&nexprs, &exprlens, nlocs);
-							if (i<ncnt) {
-								offset = nexprs[i].number;
-							adr = offset;
-LLOG("\t\t\t *** i:"<<i<<" cnt:"<<cnt<<" offset:" << offset << " address: 0x" << Hex(adr));
+							Dwarf_Attribute exprAttr;
+							if (dwarf_getlocation_attr(&locAttr,expr,&exprAttr) == 0) {
+								Dwarf_Addr eaddr;
+								if (dwarf_formaddr(&exprAttr, &eaddr) == 0) {
+									DLOG("*** exprAttr addr:0x"<<Hex(eaddr));
+								}
+								adr = eaddr;
 							}
+LLOG("\t\t\t ***  cuBaseAddress:0x" << Hex(cuBaseAddress) << " offset:" << offset << " baseAddress:0x" << Hex(baseAddress) << " address:0x" << Hex(adr));
 						}
 						else if (DW_OP_lit0 <= exp.atom && exp.atom <= DW_OP_lit31) { // Literal encodings, value is  on to the stack
 							NEVER();
