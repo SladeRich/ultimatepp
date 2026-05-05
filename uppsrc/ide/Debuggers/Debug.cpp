@@ -413,10 +413,10 @@ void Pdb::WriteContext(Thread::Hnd  hThread, Context& context)
 #endif
 }
 
-bool Pdb::AddThread(dword dwThreadId, Thread::Hnd  hThread)
+void Pdb::AddThread(dword dwThreadId, Thread::Hnd  hThread)
 {
 	if(threads.Find(dwThreadId) >= 0)
-		return false; // Already have this thread
+		return; // Already have this thread
 	DR_LOG("AddThread");
 	Thread& f = threads.GetAdd(dwThreadId);
 	// Retrive "base-level" stack-pointer, to have limit for stackwalks:
@@ -424,10 +424,9 @@ bool Pdb::AddThread(dword dwThreadId, Thread::Hnd  hThread)
 	f.sp = c.GetSP(win64);
 	f.hThread = hThread;
 	LLOG("Adding thread " << dwThreadId << ", Thread SP: 0x" << Hex(f.sp) << ", handle: 0x" << FormatIntHex((dword)(uintptr_t)(hThread)));
-	return true;
 }
 
-bool Pdb::RemoveThread(dword dwThreadId)
+void Pdb::RemoveThread(dword dwThreadId)
 {
 	int q = threads.Find(dwThreadId);
 	if(q >= 0) {
@@ -437,9 +436,7 @@ bool Pdb::RemoveThread(dword dwThreadId)
 		CloseHandle(f.hThread);
 #endif
 		threads.Remove(q);
-		return true;
 	}
-	return false;
 }
 
 #define EXID(id)       { id, #id },
@@ -967,5 +964,3 @@ void Pdb::BreakRunning() //TODO: Fix in wow64?
 #endif
 	}
 }
-
-//#endif

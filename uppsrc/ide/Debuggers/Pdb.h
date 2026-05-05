@@ -538,8 +538,8 @@ struct Pdb : Debugger, ParentCtrl {
 	void       LoadModuleInfo();
 	int        FindModuleIndex(adr_t base);
 	void       UnloadModuleSymbols();
-	bool       AddThread(dword dwThreadId, Thread::Hnd  hThread);
-	bool       RemoveThread(dword dwThreadId);
+	void       AddThread(dword dwThreadId, Thread::Hnd  hThread);
+	void       RemoveThread(dword dwThreadId);
 	void       Lock();
 	void       Unlock();
 	void       ToForeground();

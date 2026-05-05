@@ -895,8 +895,8 @@ void Pdb::GetLocals(Frame& frame, Context& context, VectorMap<String, Pdb::Val>&
 	LLOG("GetLocals *****************");
 #ifdef PLATFORM_WIN32
 	static IMAGEHLP_STACK_FRAME f;
-	SymSetContext(hProcess, &f, 0);
 	f.InstructionOffset = frame.pc;
+	SymSetContext(hProcess, &f, 0);
 	LocalsCtx c;
 	c.frame = frame.frame;
 	c.pdb = this;
@@ -1060,8 +1060,8 @@ Pdb::Val Pdb::GetGlobal(const String& name)
 
 String Pdb::GetSymName(adr_t modbase, dword typeindex)
 {
-	wchar *pwszTypeName;
 #ifdef PLATFORM_WIN32
+	WCHAR *pwszTypeName;
 	if(SymGetTypeInfo(hProcess, modbase, typeindex, TI_GET_SYMNAME, &pwszTypeName)) {
 		WString w = pwszTypeName;
 		LocalFree(pwszTypeName);
@@ -1140,7 +1140,6 @@ const Pdb::Type& Pdb::GetType(int ti)
 								v.bitcnt = (byte)bitcnt;
 								v.bitpos = (byte)GetSymInfo(t.modbase, ch, TI_GET_BITPOSITION);
 							}
-							LLOG("\t To "<<t.name<<" added new type member "<<t.member.GetCount()<<" "<<name<<" value:"<<val);
 						}
 						if(kind == DataIsStaticMember || kind == DataIsGlobal) {
 							Val& v = t.static_member.Add(name);
