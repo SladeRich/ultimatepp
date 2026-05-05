@@ -14,7 +14,7 @@
 #define STATUS_WX86_EXCEPTION_LASTCHANCE 0x40000021
 #define STATUS_WX86_EXCEPTION_CHAIN      0x40000022
 
-#define LLOG(x)   DLOG(x)
+#define LLOG(x)  DLOG(x)
 
 String Pdb::Hex(adr_t a)
 {
@@ -413,10 +413,10 @@ void Pdb::WriteContext(Thread::Hnd  hThread, Context& context)
 #endif
 }
 
-void Pdb::AddThread(dword dwThreadId, Thread::Hnd  hThread)
+bool Pdb::AddThread(dword dwThreadId, Thread::Hnd  hThread)
 {
 	if(threads.Find(dwThreadId) >= 0)
-		return; // Already have this thread
+		return false; // Already have this thread
 	DR_LOG("AddThread");
 	Thread& f = threads.GetAdd(dwThreadId);
 	// Retrive "base-level" stack-pointer, to have limit for stackwalks:
@@ -424,9 +424,10 @@ void Pdb::AddThread(dword dwThreadId, Thread::Hnd  hThread)
 	f.sp = c.GetSP(win64);
 	f.hThread = hThread;
 	LLOG("Adding thread " << dwThreadId << ", Thread SP: 0x" << Hex(f.sp) << ", handle: 0x" << FormatIntHex((dword)(uintptr_t)(hThread)));
+	return true;
 }
 
-void Pdb::RemoveThread(dword dwThreadId)
+bool Pdb::RemoveThread(dword dwThreadId)
 {
 	int q = threads.Find(dwThreadId);
 	if(q >= 0) {
@@ -436,7 +437,9 @@ void Pdb::RemoveThread(dword dwThreadId)
 		CloseHandle(f.hThread);
 #endif
 		threads.Remove(q);
+		return true;
 	}
+	return false;
 }
 
 #define EXID(id)       { id, #id },
@@ -739,7 +742,7 @@ bool Pdb::RunToException()
 						// New thread
 						unsigned long forkId = 0;
 						ptrace(PTRACE_GETEVENTMSG, pid, NULL, &forkId);
-						LLOG("New thread cloned "<<forkId<<" pid:"<<pid<<" mainThreadId:"<<mainThreadId);
+						LLOG("New thread forked "<<forkId<<" pid:"<<pid<<" mainThreadId:"<<mainThreadId);
 						if (AddThread(forkId, pid)) {
 							DR_LOG("Added process: " << forkId);
 							LLOG("Added process: " << forkId);

@@ -8,7 +8,7 @@
 #include <sys/ptrace.h>
 #endif
 
-#define LLOG(x)   DLOG(x)
+#define LLOG(x) //  DLOG(x)
 
 #ifdef _DEBUG
 
@@ -545,7 +545,7 @@ int Pdb::GetValType(Dwarf_Die& die) {
 	}
 	else {
 		const char *typeName = dwarf_diename(&die);
-		DLOG("\t\t\t typeName:"<<(typeName?:""));
+		LLOG("\t\t\t typeName:"<<(typeName?:""));
 	}
 	return valType;
 }
@@ -809,12 +809,11 @@ bool Pdb::GetTypeVal(Pdb::Val* val, Dwarf_Die die) {
 							Dwarf_Attribute exprAttr;
 							if (dwarf_getlocation_attr(&locAttr,expr,&exprAttr) == 0) {
 								Dwarf_Addr eaddr;
-								if (dwarf_formaddr(&exprAttr, &eaddr) == 0) {
-									DLOG("*** exprAttr addr:0x"<<Hex(eaddr));
-								}
+								if (dwarf_formaddr(&exprAttr, &eaddr) == 0)
+									LLOG("*** exprAttr addr:0x"<<Hex(eaddr));
 								adr = eaddr;
 							}
-LLOG("\t\t\t ***  cuBaseAddress:0x" << Hex(cuBaseAddress) << " offset:" << offset << " baseAddress:0x" << Hex(baseAddress) << " address:0x" << Hex(adr));
+							LLOG("\t\t\t ***  cuBaseAddress:0x" << Hex(cuBaseAddress) << " offset:" << offset << " baseAddress:0x" << Hex(baseAddress) << " address:0x" << Hex(adr));
 						}
 						else if (DW_OP_lit0 <= exp.atom && exp.atom <= DW_OP_lit31) { // Literal encodings, value is  on to the stack
 							NEVER();

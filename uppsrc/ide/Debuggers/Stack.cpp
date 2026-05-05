@@ -9,11 +9,10 @@
 #endif
 
 
-#define LLOG(x)   DLOG(x)
+#define LLOG(x) // DLOG(x)
 
 Pdb::Thread& Pdb::Current()
 {
-DLOG("Pdb::Thread ### "<<(int)~threadlist<<" of "<<threads.GetCount());
 	int q = threads.Find((int)~threadlist);
 	if(q >= 0)
 		return threads[q];
