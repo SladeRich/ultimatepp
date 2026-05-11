@@ -699,7 +699,9 @@ bool Pdb::RunToException()
 					DR_LOG("Create main thread: " << pid);
 					LLOG("Create main thread: " << pid);
 				}
+#ifdef CPU_ARM // Fixme - hack as this stops it working on Linux Mint
 				ptrace(PTRACE_SETOPTIONS, mainThreadId, NULL, PTRACE_O_TRACECLONE|PTRACE_O_TRACEFORK); // Enable multi threading debugging
+#endif
 			}
 			// Check if child process finished
 			if(WIFEXITED(status)) {
@@ -721,112 +723,122 @@ bool Pdb::RunToException()
 				SaveForeground();
 				int stopSig = WSTOPSIG(status);
 				LLOG("Debugee child stopped with code "<<stopSig<<" at 0x"<<Hex(ip));
-				if(stopSig==SIGTRAP || stopSig==SIGSTOP) { // SIGTRAP(5) Trace/breakpoint trap / SIGSTOP(19) - TRAP_TRACE sent on single step
-					bool halt = true;
-					ptrace(PTRACE_GETSIGINFO, pid, NULL, &info);
-					int statusBits = status>>8;
-					if (statusBits == (SIGTRAP | (PTRACE_EVENT_CLONE << 8))) {
-						// New thread
-						unsigned long procId = 0;
-						ptrace(PTRACE_GETEVENTMSG, pid, NULL, &procId);
-						LLOG("New thread cloned "<<procId<<" pid:"<<pid<<" mainThreadId:"<<mainThreadId);
-						if (AddThread(procId, pid)) {
-							DR_LOG("Added thread: " << procId);
-							LLOG("Added thread: " << procId);
-						}
-						debug_threadid = procId;
-						halt = false;
-						ptrace(PTRACE_CONT, procId, NULL, NULL);
-					}
-					else if (statusBits == (SIGTRAP | (PTRACE_EVENT_FORK << 8))) {
-						// New thread
-						unsigned long forkId = 0;
-						ptrace(PTRACE_GETEVENTMSG, pid, NULL, &forkId);
-						LLOG("New thread forked "<<forkId<<" pid:"<<pid<<" mainThreadId:"<<mainThreadId);
-						if (AddThread(forkId, pid)) {
-							DR_LOG("Added process: " << forkId);
-							LLOG("Added process: " << forkId);
-						}
-						debug_threadid = forkId;
-						halt = false;
-						ptrace(PTRACE_CONT, forkId, NULL, NULL);
-					} else {
-						debug_threadid = pid;
-					}
-					context = ctx;
-					int q = threads.Find(debug_threadid);
-					if(q >= 0) {
-						Thread& f = threads[q];
-						f.regs = context.regs;
-					}
-					if (halt) {
-						bool singleStep = info.si_code==TRAP_TRACE;
-						bool isbreakpoint = info.si_code==TRAP_BRKPT || info.si_code==SI_KERNEL;
-						LLOG("\t Got "<<(stopSig==SIGTRAP?"SIGTRAP":"SIGSTOP")<<"("<<stopSig<<") trace/breakpoint break_running:"<<break_running<<" isbreakpoint:"<<isbreakpoint<<" mainThreadId:"<<mainThreadId<<" debug_threadid:"<<debug_threadid);
-						ToForeground();
-						if(disasfocus)
-							disas.SetFocus();
-						if(locked)
-							Unlock();
-						if(refreshmodules)
-							LoadModuleInfo();
-						if(isbreakpoint) {
-							if (bp_set.Find(ip - 1) >= 0) {
-								// We have stopped at breakpoint, need to move address back
-								ip--;
-								LLOG("\t SIGTRAP("<<info.si_signo<<") breakpoint - moved address back from ip:0x"<<Hex((ip+1))<<" to 0x"<<Hex(ip));
-								context.SetIP(ip);
-								#ifdef CPU_ARM
-								struct iovec iov;
-								iov.iov_base = &context.regs;
-								iov.iov_len = sizeof(context.regs);
-								ptrace(PTRACE_SETREGSET, debug_threadid, (void*)NT_PRSTATUS, &iov);
-								#else
-								ptrace(PTRACE_SETREGS, debug_threadid, NULL, &context.regs);
-								#endif
+				switch(stopSig) {
+					case SIGSTOP:
+					case SIGTRAP:{ // SIGTRAP(5) Trace/breakpoint trap / SIGSTOP(19) - TRAP_TRACE sent on single step
+							bool halt = true;
+							ptrace(PTRACE_GETSIGINFO, pid, NULL, &info);
+							int statusBits = status>>8;
+							if (statusBits == (SIGTRAP | (PTRACE_EVENT_CLONE << 8))) {
+								// New thread
+								unsigned long procId = 0;
+								ptrace(PTRACE_GETEVENTMSG, pid, NULL, &procId);
+								LLOG("New thread cloned "<<procId<<" pid:"<<pid<<" mainThreadId:"<<mainThreadId);
+								if (AddThread(procId, pid)) {
+									DR_LOG("Added thread: " << procId);
+									LLOG("Added thread: " << procId);
+								}
+								debug_threadid = procId;
+								halt = false;
+								ptrace(PTRACE_CONT, procId, NULL, NULL);
+							}
+							else if (statusBits == (SIGTRAP | (PTRACE_EVENT_FORK << 8))) {
+								// New thread
+								unsigned long forkId = 0;
+								ptrace(PTRACE_GETEVENTMSG, pid, NULL, &forkId);
+								LLOG("New thread forked "<<forkId<<" pid:"<<pid<<" mainThreadId:"<<mainThreadId);
+								if (AddThread(forkId, pid)) {
+									DR_LOG("Added process: " << forkId);
+									LLOG("Added process: " << forkId);
+								}
+								debug_threadid = forkId;
+								halt = false;
+								ptrace(PTRACE_CONT, forkId, NULL, NULL);
+							} else {
+								debug_threadid = pid;
+							}
+							context = ctx;
+							int q = threads.Find(debug_threadid);
+							if(q >= 0) {
+								Thread& f = threads[q];
+								f.regs = context.regs;
+							}
+							if (halt) {
+								bool singleStep = info.si_code==TRAP_TRACE;
+								bool isbreakpoint = info.si_code==TRAP_BRKPT || info.si_code==SI_KERNEL;
+								LLOG("\t Got "<<(stopSig==SIGTRAP?"SIGTRAP":"SIGSTOP")<<"("<<stopSig<<") trace/breakpoint break_running:"<<break_running<<" isbreakpoint:"<<isbreakpoint<<" mainThreadId:"<<mainThreadId<<" debug_threadid:"<<debug_threadid);
+								ToForeground();
+								if(disasfocus)
+									disas.SetFocus();
+								if(locked)
+									Unlock();
+								if(refreshmodules)
+									LoadModuleInfo();
+								if(isbreakpoint) {
+									if (bp_set.Find(ip - 1) >= 0) {
+										// We have stopped at breakpoint, need to move address back
+										ip--;
+										LLOG("\t SIGTRAP("<<info.si_signo<<") breakpoint - moved address back from ip:0x"<<Hex((ip+1))<<" to 0x"<<Hex(ip));
+										context.SetIP(ip);
+										#ifdef CPU_ARM
+										struct iovec iov;
+										iov.iov_base = &context.regs;
+										iov.iov_len = sizeof(context.regs);
+										ptrace(PTRACE_SETREGSET, debug_threadid, (void*)NT_PRSTATUS, &iov);
+										#else
+										ptrace(PTRACE_SETREGS, debug_threadid, NULL, &context.regs);
+										#endif
+									}
+								}
+								break_running = false;
+								LLOG("<<< Debugee is paused "<<debug_threadid);
+								RemoveBp();
+								return true; // Target is paused
 							}
 						}
-						break_running = false;
-						LLOG("<<< Debugee is paused "<<debug_threadid);
-						RemoveBp();
-						return true; // Target is paused
-					}
-				}
-				if(stopSig==SIGILL) { // SIGILL(4) - Program counter is not pointing to an instruction
-					ptrace(PTRACE_GETSIGINFO, pid, NULL, &info);
-					DR_LOG("\t Got SIGILL("<<info.si_signo<<") "<<" code:"<<info.si_code<<" - program counter is not pointing to an instruction");
-					LLOG("\t Got SIGILL("<<info.si_signo<<") "<<" code:"<<info.si_code<<" - program counter is not pointing to an instruction");
-					return false; // It is not going to run
-				}
-				if(stopSig==SIGSEGV) { // SIGSEGV(11)
-					ptrace(PTRACE_GETSIGINFO, pid, NULL, &info);
-					DR_LOG("\t Got SIGSEGV("<<info.si_signo<<") code:"<<info.si_code);
-					LLOG("\t Got SIGSEGV("<<info.si_signo<<") code:"<<info.si_code);
-					ToForeground();
-					BeepError();
-					String desc = "Debug caught exeception";
-					if (info.si_errno!=0)
-						desc << " - " << strerror(info.si_errno);
-					if(!Prompt(Ctrl::GetAppName(), CtrlImg::error(), desc, t_("OK"), t_("Stop"))) {
-						Stop();
-						if (RemoveThread(pid)) {
-							DR_LOG("Exit thread: " << pid);
-							LLOG("Exit thread: " << pid);
+					break;
+					case SIGILL: { // SIGILL(4) - Program counter is not pointing to an instruction
+							ptrace(PTRACE_GETSIGINFO, pid, NULL, &info);
+							DR_LOG("\t Got SIGILL("<<info.si_signo<<") "<<" code:"<<info.si_code<<" - program counter is not pointing to an instruction");
+							LLOG("\t Got SIGILL("<<info.si_signo<<") "<<" code:"<<info.si_code<<" - program counter is not pointing to an instruction");
+							return false; // It is not going to run
 						}
-						LLOG("<<< Debugee aborted "<<pid);
-						return false; // Target has an exception, user has opted out
-					}
-				}
-				if(stopSig==SIGCHLD) { // SIGCHLD(17)
-					ptrace(PTRACE_GETSIGINFO, pid, NULL, &info);
-					DR_LOG("\t Got SIGCHLD("<<info.si_signo<<") "<<" code:"<<info.si_code);
-					LLOG("\t Got SIGCHLD("<<info.si_signo<<") "<<" code:"<<info.si_code);
-					context = ctx;
-					int q = threads.Find(debug_threadid);
-					if(q >= 0) {
-						Thread& f = threads[q];
-						f.regs = context.regs;
-					}
+						break;
+					case SIGSEGV: { // SIGSEGV(11)
+							ptrace(PTRACE_GETSIGINFO, pid, NULL, &info);
+							DR_LOG("\t Got SIGSEGV("<<info.si_signo<<") code:"<<info.si_code);
+							LLOG("\t Got SIGSEGV("<<info.si_signo<<") code:"<<info.si_code);
+							ToForeground();
+							BeepError();
+							String desc = "Debug caught exeception";
+							if (info.si_errno!=0)
+								desc << " - " << strerror(info.si_errno);
+							if(!Prompt(Ctrl::GetAppName(), CtrlImg::error(), desc, t_("OK"), t_("Stop"))) {
+								if(locked)
+									Unlock();
+								Stop();
+								if (RemoveThread(pid)) {
+									DR_LOG("Exit thread: " << pid);
+									LLOG("Exit thread: " << pid);
+								}
+								LLOG("<<< Debugee aborted "<<pid);
+								return false; // Target has an exception, user has opted out
+							}
+							return true; // Pause target to allow inspection of fault
+						}
+						break;
+					case SIGCHLD: { // SIGCHLD(17)
+							ptrace(PTRACE_GETSIGINFO, pid, NULL, &info);
+							DR_LOG("\t Got SIGCHLD("<<info.si_signo<<") "<<" code:"<<info.si_code);
+							LLOG("\t Got SIGCHLD("<<info.si_signo<<") "<<" code:"<<info.si_code);
+							context = ctx;
+							int q = threads.Find(debug_threadid);
+							if(q >= 0) {
+								Thread& f = threads[q];
+								f.regs = context.regs;
+							}
+						}
+						break;
 				}
 			}
 			else if(WIFSIGNALED(status)) {
@@ -841,7 +853,7 @@ bool Pdb::RunToException()
 			else if(WIFCONTINUED(status)) {
 				LLOG("Continued");
 			}
-			LLOG("<<< Debugee continued "<<pid);
+			LLOG("<<< Debugee continuing "<<pid);
 			ptrace(PTRACE_CONT, pid, NULL, NULL);
 			running = true;
 		}

@@ -262,6 +262,7 @@ bool Pdb::Create(Host& local, const String& exefile, const String& cmdline, bool
 		return false;
 	} else {
 		// Parent process - debugger
+		LLOG("Running debugee #"<<mainThreadId);
 	}
 	
 #endif
@@ -832,10 +833,23 @@ void Pdb::DebugDumpKid(Dwarf_Die *die, unsigned depth, unsigned *cnt, unsigned *
 					(*disp)++;
 				}
 				break;
+			case DW_TAG_lexical_block:
+				if (verbose || name) {
+					const char *tagName = "DW_TAG_lexical_block";
+					s << offset<<push<<" "<<tagName<<" #"<<tag;
+					s << " name:'"<<(name ?: "")<<"'";
+					(*disp)++;
+				}
+				break;
 			default:
 				if (verbose || name) {
+					Dwarf_Addr loAdr=0;
+					dwarf_lowpc(die, &loAdr);
+					Dwarf_Addr hiAdr=0;
+					dwarf_highpc(die, &hiAdr);
 					s << offset<<push<<"  #"<<tag;
 					s << " name:'"<<(name ?: "")<<"'";
+					s << " loAdr:0x"<<Hex(loAdr)<<" hiAdr:0x"<<Hex(hiAdr);
 					(*disp)++;
 				}
 				break;

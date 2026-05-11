@@ -598,6 +598,7 @@ struct Pdb : Debugger, ParentCtrl {
 #else
 	int                   GetValType(Dwarf_Die& die);
 	bool                  GetTypeVal(Pdb::Val* val, Dwarf_Die kid);
+	bool                  GetNestedLocals(VectorMap<String, Pdb::Val>& param, VectorMap<String, Pdb::Val>& local, Dwarf_Die *die, Dwarf_Addr addr);
 #endif
 	
 // exp

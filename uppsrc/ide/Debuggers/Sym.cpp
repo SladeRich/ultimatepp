@@ -8,7 +8,7 @@
 #include <sys/ptrace.h>
 #endif
 
-#define LLOG(x) //  DLOG(x)
+#define LLOG(x)  DLOG(x)
 
 #ifdef _DEBUG
 
@@ -99,14 +99,18 @@ adr_t Pdb::GetAddress(FilePos p)
 	while (dwarf_nextcu(dwarf, off, &next, &hdrSz, NULL, NULL, NULL) == 0) {
 		Dwarf_Die cu;
 		if (dwarf_offdie(dwarf, off + hdrSz, &cu) != NULL) {
-			//if(strcmp(p.path,dwarf_diename(&cu))==0) { - Blitz has multiple files
-				Dwarf_Lines *lines;
-				size_t nlines;
-				if (dwarf_getsrclines(&cu, &lines, &nlines) == 0) {
-					unsigned best = ~0;
-					Dwarf_Addr a = 0;
-					for (size_t i = 0; i < nlines; i++) {
-						Dwarf_Line *line = dwarf_onesrcline(lines, i);
+			Dwarf_Lines *lines;
+			size_t nlines;
+			if (dwarf_getsrclines(&cu, &lines, &nlines) == 0) {
+				unsigned best = ~0;
+				Dwarf_Addr a = 0;
+				for (size_t i = 0; i < nlines; i++) {
+					Dwarf_Line *line = dwarf_onesrcline(lines, i);
+					size_t fi;
+					Dwarf_Files *files;
+					dwarf_line_file(line, &files, &fi);
+					const char *filename = dwarf_filesrc(files, fi, NULL, NULL);
+					if (strcmp(p.path,filename)==0) {
 						int lineNum;
 						dwarf_lineaddr(line, &a);
 						dwarf_lineno(line, &lineNum);
@@ -127,8 +131,7 @@ adr_t Pdb::GetAddress(FilePos p)
 						adr = a;
 					}
 				}
-			//}
-			break;
+			}
 		}
 		off = next;
 	}
@@ -187,11 +190,11 @@ Pdb::FilePos Pdb::GetFilePos(adr_t address)
 							int lineNum;
 							dwarf_lineno(line, &lineNum);
 							const char *src = dwarf_linesrc(line, NULL, NULL);
-							LLOG("Seeking file position for local address 0x"<<Hex(addr)<<" address:0x"<<Hex(adr)<<" Line: "<<lineNum<<" Source:"<<src);
 							fp.line = lineNum - 1;
 							fp.path = src;
 							fp.address = address;
 							if (adr==addr) {
+								LLOG("Seeking file position for local address 0x"<<Hex(addr)<<" address:0x"<<Hex(adr)<<" Line: "<<lineNum<<" Source:"<<src);
 								if (lineNum == 0) {
 									// Dwarf gives 0 when it can not ascertain the line number so just take the next valid line
 									for (++i; i < nlines; i++) {
@@ -886,6 +889,36 @@ bool Pdb::GetTypeVal(Pdb::Val* val, Dwarf_Die die) {
 		}
 	return ok;
 }
+
+bool Pdb::GetNestedLocals(VectorMap<String, Pdb::Val>& param, VectorMap<String, Pdb::Val>& local, Dwarf_Die *die, Dwarf_Addr addr) {
+	bool ok = true;
+	Dwarf_Die kid;
+	if (dwarf_child(die, &kid) == 0) {
+		do {
+			int tag = dwarf_tag(&kid);
+			if (tag == DW_TAG_lexical_block) {
+				if(dwarf_haspc(&kid, addr)) {
+					GetNestedLocals(param, local, &kid, addr);
+				}
+			}
+			else {
+				Pdb::Val val;
+				if (GetTypeVal(&val, kid)) {
+					int tag = dwarf_tag(&kid);
+					const char *name = dwarf_diename(&kid);
+					if(tag == DW_TAG_formal_parameter) {
+						param.Add(name,val);
+						LLOG("\t\t added parameter variable "<<name<<" val:"<<val<<" address:0x"<<Hex(val.address)<<" ival:"<<val.ival);
+					} else {
+						local.Add(name,val);
+						LLOG("\t\t added local variable "<<name<<" val:"<<val<<" address:0x"<<Hex(val.address)<<" ival:"<<val.ival);
+					}
+				}
+			}
+		} while (dwarf_siblingof(&kid, &kid) == 0);
+	}
+	return ok;
+}
 #endif
 
 void Pdb::GetLocals(Frame& frame, Context& context, VectorMap<String, Pdb::Val>& param,
@@ -941,34 +974,7 @@ void Pdb::GetLocals(Frame& frame, Context& context, VectorMap<String, Pdb::Val>&
 								dwarf_highpc(&die, &hiAdr);
 								unsigned size = hiAdr - loAdr;
 								LLOG("\t Tag:DW_TAG_subprogram #"<<tag<<" loAdr:0x"<<Hex(loAdr)<<" size:"<<(hiAdr-loAdr)<< " Name:"<<(fnName ?: ""));
-								Dwarf_Attribute fbAttr;
-								fbReg = DW_OP_fbreg;
-								if (dwarf_attr(&die, DW_AT_frame_base, &fbAttr) != NULL) {
-									Dwarf_Op *expr;
-									size_t cnt;
-									if (dwarf_getlocation(&fbAttr, &expr, &cnt) == 0) {
-										for (size_t i = 0; i < cnt; i++) {
-											fbReg = expr[i].atom;
-										}
-									}
-								}
-								Dwarf_Die kid;
-								if (dwarf_child(&die, &kid) == 0) {
-									do {
-										Pdb::Val val;
-										if (GetTypeVal(&val, kid)) {
-											int tag = dwarf_tag(&kid);
-											const char *name = dwarf_diename(&kid);
-											if(tag == DW_TAG_formal_parameter) {
-												param.Add(name,val);
-												LLOG("\t\t added parameter variable "<<name<<" val:"<<val<<" address:0x"<<Hex(val.address)<<" ival:"<<val.ival);
-											} else {
-												local.Add(name,val);
-												LLOG("\t\t added local variable "<<name<<" val:"<<val<<" address:0x"<<Hex(val.address)<<" ival:"<<val.ival);
-											}
-										}
-									} while (dwarf_siblingof(&kid, &kid) == 0);
-								}
+								GetNestedLocals(param, local, &die, addr);
 							}
 							break;
 					}
