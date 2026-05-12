@@ -180,9 +180,9 @@ Pdb::FilePos Pdb::GetFilePos(adr_t address)
 		if (dwarf_offdie(dwarf, off + hdrSz, &cu) != NULL) {
 			if(dwarf_haspc(&cu, addr)) {
 				Dwarf_Lines *lines;
-				size_t nlines;
+				size_t i, nlines = 0;
 				if (dwarf_getsrclines(&cu, &lines, &nlines) == 0) {
-					for (size_t i = 0; i < nlines; i++) {
+					for (i = 0; i < nlines; i++) {
 						Dwarf_Line *line = dwarf_onesrcline(lines, i);
 						Dwarf_Addr adr;
 						dwarf_lineaddr(line, &adr);
@@ -194,24 +194,31 @@ Pdb::FilePos Pdb::GetFilePos(adr_t address)
 							fp.path = src;
 							fp.address = address;
 							if (adr==addr) {
-								LLOG("Seeking file position for local address 0x"<<Hex(addr)<<" address:0x"<<Hex(adr)<<" Line: "<<lineNum<<" Source:"<<src);
-								if (lineNum == 0) {
-									// Dwarf gives 0 when it can not ascertain the line number so just take the next valid line
-									for (++i; i < nlines; i++) {
-										line = dwarf_onesrcline(lines, i);
-										dwarf_lineno(line, &lineNum);
-										if (lineNum != 0) {
-											fp.line = lineNum - 1;
-											break;
-										}
-									}
-								}
+								LLOG("File position for local address 0x"<<Hex(addr)<<" address:0x"<<Hex(adr)<<" Line: "<<lineNum<<" Source:"<<src);
 								break;
 							}
 						}
+						else {
+							break;
+						}
 					}
 				}
-				break;
+				if (fp.line == -1) {
+					// Dwarf gives 0 when it can not ascertain the line number so just take the next valid line
+					for (++i; i < nlines; i++) {
+						int lineNum;
+						Dwarf_Line *line = dwarf_onesrcline(lines, i);
+						dwarf_lineno(line, &lineNum);
+						if (lineNum != 0) {
+							const char *src = dwarf_linesrc(line, NULL, NULL);
+							fp.line = lineNum - 1;
+							fp.path = src;
+							LLOG("Using next file position for local address 0x"<<Hex(addr)<<" Line: "<<lineNum<<" Source:"<<src);
+							break;
+						}
+					}
+				}
+				break; // Has PC
 			}
 		}
 		off = next;
@@ -750,15 +757,15 @@ bool Pdb::GetTypeVal(Pdb::Val* val, Dwarf_Die die) {
 							int64 reg = exp.number;
 							int64 offset = exp.number2;
 							adr_t fr;
-							switch(fbReg) {
-								case DW_OP_reg31: // ARM 64 stack pointer register
-									fr = context.GetSP();
-									break;
-								case DW_OP_fbreg:
-								default:
+//							switch(fbReg) {
+//								case DW_OP_reg31: // ARM 64 stack pointer register
+//									fr = context.GetSP();
+//									break;
+//								case DW_OP_fbreg:
+//								default:
 									fr = context.GetBP();
-									break;
-							}
+//									break;
+//							}
 							adr = fr+offset+reg;
 						}
 						else if (DW_OP_breg0 <= exp.atom && exp.atom <= DW_OP_breg31) { // Variable at the given register plus the given offset to the stack
@@ -801,22 +808,12 @@ bool Pdb::GetTypeVal(Pdb::Val* val, Dwarf_Die die) {
 							adr = r+offset+reg;
 						}
 						else if (exp.atom == DW_OP_addrx || exp.atom == DW_OP_GNU_addr_index) { // Variable in CU list at offset
-// Todo - fixme look up .debug_addr table - needed for globals like int GlobalInt = -23;
-							int64 offset = exp.number;
-							#ifdef CPU_64
-							unsigned sz = 8;
-							#else
-							unsigned sz = 4;
-							#endif
-							adr = baseAddress + cuBaseAddress + offset*sz;
 							Dwarf_Attribute exprAttr;
 							if (dwarf_getlocation_attr(&locAttr,expr,&exprAttr) == 0) {
 								Dwarf_Addr eaddr;
-								if (dwarf_formaddr(&exprAttr, &eaddr) == 0)
-									LLOG("*** exprAttr addr:0x"<<Hex(eaddr));
-								adr = eaddr;
+								dwarf_formaddr(&exprAttr, &eaddr);
+								adr = baseAddress + eaddr;
 							}
-							LLOG("\t\t\t ***  cuBaseAddress:0x" << Hex(cuBaseAddress) << " offset:" << offset << " baseAddress:0x" << Hex(baseAddress) << " address:0x" << Hex(adr));
 						}
 						else if (DW_OP_lit0 <= exp.atom && exp.atom <= DW_OP_lit31) { // Literal encodings, value is  on to the stack
 							NEVER();
@@ -950,14 +947,6 @@ void Pdb::GetLocals(Frame& frame, Context& context, VectorMap<String, Pdb::Val>&
 	while (dwarf_nextcu(dwarf, off, &next, &hdrSz, NULL, NULL, NULL) == 0) {
 		Dwarf_Die cu;
 		if (dwarf_offdie(dwarf, off + hdrSz, &cu) != NULL) {
-			Dwarf_Attribute attr;
-			if (dwarf_attr(&cu, DW_AT_addr_base, &attr) != NULL) {
-				Dwarf_Word base;
-				dwarf_formudata(&attr, &base);
-				cuBaseAddress = base;
-			}
-			else
-				cuBaseAddress = 0;
 			// Iterate over children DIEs
 			Dwarf_Die die; // Debugging Information Entry (DIE)
 			if (dwarf_child(&cu, &die) == 0) {
@@ -1022,14 +1011,6 @@ void Pdb::LoadGlobals(uint64 base)
 	while (dwarf_nextcu(dwarf, off, &next, &hdrSz, NULL, NULL, NULL) == 0) {
 		Dwarf_Die cu;
 		if (dwarf_offdie(dwarf, off + hdrSz, &cu) != NULL) {
-			Dwarf_Attribute attr;
-			if (dwarf_attr(&cu, DW_AT_addr_base, &attr) != NULL) {
-				Dwarf_Word base;
-				dwarf_formudata(&attr, &base);
-				cuBaseAddress = base;
-			}
-			else
-				cuBaseAddress = 0;
 			// Iterate over children DIEs
 			Dwarf_Die die; // Debugging Information Entry (DIE)
 			if (dwarf_child(&cu, &die) == 0) {

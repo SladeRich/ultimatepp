@@ -409,8 +409,7 @@ struct Pdb : Debugger, ParentCtrl {
 	Elf                         *elf; // Executable and Linkable Format(ELF)
 	Dwarf                       *dwarf;
 	adr_t                       baseAddress;
-	adr_t                       cuBaseAddress;
-	unsigned                    fbReg;
+//	unsigned                    fbReg;
 #endif
 	dword                       mainThreadId;
 	dword                       debug_threadid;
