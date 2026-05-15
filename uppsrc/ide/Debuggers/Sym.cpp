@@ -513,8 +513,11 @@ int CALLBACK Pdb::EnumLocals(PSYMBOL_INFO pSym, unsigned long SymbolSize, void* 
 #ifdef PLATFORM_WIN32
 #else
 
-int Pdb::GetValType(Dwarf_Die& die) {
+int Pdb::GetValType(Dwarf_Die& die, Dwarf_Die *valDie) {
 	int valType = UNKNOWN; // enum { UNKNOWN = -99, BOOL1, SINT1, UINT1, SINT2, UINT2, SINT4, UINT4, SINT8, UINT8, FLT, DBL, PFUNC };
+	if (valDie) {
+		*valDie = die;
+	}
 	int tag = dwarf_tag(&die);
 	if (tag==DW_TAG_base_type) {
 		Dwarf_Word typeSz;
@@ -568,6 +571,9 @@ int Pdb::GetValType(Dwarf_Die& die) {
 		if (dwarf_attr(&die, DW_AT_type, &typeAttr)) {
 			Dwarf_Die subTypeDie;
 			if (dwarf_formref_die(&typeAttr, &subTypeDie)) {
+				if (valDie) {
+					*valDie = subTypeDie;
+				}
 				valType = GetValType(subTypeDie); // Const type - need to go deeper
 			}
 		}
@@ -626,12 +632,13 @@ bool Pdb::GetTypeVal(Pdb::Val* val, Dwarf_Die die) {
 							if (dwarf_attr(&typeDie, DW_AT_type, &typeAttr)) {
 								Dwarf_Die subTypeDie;
 								if (dwarf_formref_die(&typeAttr, &subTypeDie)) {
-									valType = GetValType(subTypeDie);
+									Dwarf_Die valDie;
+									valType = GetValType(subTypeDie, &valDie);
 									if (valType == UNKNOWN) {
 										// Must be a struct type
 										valType = GetTypeIndex(0,dwarf_dieoffset(&subTypeDie)); // Get custom val type
 										Type& t = type[valType];
-										t.die = subTypeDie;
+										t.die = valDie;
 										Dwarf_Attribute sizeAttr;
 										if (dwarf_attr(&subTypeDie, DW_AT_byte_size, &sizeAttr)) {
 											dwarf_formudata(&sizeAttr, &rptSz);
@@ -682,12 +689,13 @@ bool Pdb::GetTypeVal(Pdb::Val* val, Dwarf_Die die) {
 							if (dwarf_attr(&typeDie, DW_AT_type, &typeAttr)) {
 								Dwarf_Die subTypeDie;
 								if (dwarf_formref_die(&typeAttr, &subTypeDie)) {
-									valType = GetValType(subTypeDie);
+									Dwarf_Die valDie;
+									valType = GetValType(subTypeDie, &valDie);
 									if (valType == UNKNOWN) {
 										// Must be a struct type
 										valType = GetTypeIndex(0,dwarf_dieoffset(&subTypeDie)); // Get custom val type
 										Type& t = type[valType];
-										t.die = subTypeDie;
+										t.die = valDie;
 										Dwarf_Attribute sizeAttr;
 										if (dwarf_attr(&subTypeDie, DW_AT_byte_size, &sizeAttr)) {
 											dwarf_formudata(&sizeAttr, &rptSz);
@@ -703,12 +711,13 @@ bool Pdb::GetTypeVal(Pdb::Val* val, Dwarf_Die die) {
 							if (dwarf_attr(&typeDie, DW_AT_type, &typeAttr)) {
 								Dwarf_Die subTypeDie;
 								if (dwarf_formref_die(&typeAttr, &subTypeDie)) {
-									valType = GetValType(subTypeDie);
+									Dwarf_Die valDie;
+									valType = GetValType(subTypeDie, &valDie);
 									if (valType == UNKNOWN) {
 										// Must be a struct type
 										valType = GetTypeIndex(0,dwarf_dieoffset(&subTypeDie)); // Get custom val type
 										Type& t = type[valType];
-										t.die = subTypeDie;
+										t.die = valDie;
 										udt = true;
 									}
 								}
@@ -1182,7 +1191,9 @@ const Pdb::Type& Pdb::GetType(int ti)
 #else
 
 	// Dwarf implementation
-	LLOG("PDB::GetType ("<<ti<<')'<<" of "<<type.GetCount());
+	LLOG("PDB::GetType for \""<<t.name<<"\" "<<ti<<'/'<<type.GetCount());
+if (ti==1096)
+	DLOG("die:"<<t.die.addr);
 	if(t.size < 0) {
 		t.name = dwarf_diename(&t.die);
 		Dwarf_Word size = -1;
