@@ -230,6 +230,7 @@ bool Pdb::Create(Host& local, const String& exefile, const String& cmdline, bool
 		return false;
 	}
 	///LLOG(DebugDump(true));
+	breakResume = false;
 	// Run debugee using fork
 	mainThreadId = fork();
 	if(mainThreadId == -1) {

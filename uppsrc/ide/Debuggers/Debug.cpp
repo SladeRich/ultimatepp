@@ -132,39 +132,42 @@ bool Pdb::AddBp(adr_t address)
 
 #else
 
-#ifdef CPU_ARM
-
-	// Dwarf ARM implementation
-	uint64 prev;
-	// Read original instruction
-	uint64 peek64 = ptrace(PTRACE_PEEKDATA, mainThreadId, address, 0);
-	//LLOG("\t Read memory at break point id:"<<mainThreadId<<" 0x"<<Hex(address)<<" of 0x"<<Hex(peek64));
-	// Insert breakpoint instruction
-	uint64 bp = (~(uint64)0xffffffff&peek64) | 0xd4200000; // AArch64 uses the BRK #<immediate> instruction 0xD4200000
-	prev = 0xffffffff&peek64;
-	if (ptrace(PTRACE_POKEDATA, mainThreadId, address, bp)==-1) {
-		LLOG("\t Write memory failed id:"<<mainThreadId<<" at 0x"<<Hex(address)<<" of 0x"<<Hex(bp)<<" - "<<strerror(errno));
-		return false;
-	}
-	LLOG("\t Write memory at break point id:"<<mainThreadId<<" 0x"<<Hex(address)<<" to 0x"<<Hex((byte)bp)<<" previous was 0x"<<Hex(prev));
-
-#else
-
 	// Dwarf implementation
 	uint64 prev;
-	// Read original instruction
-	uint64 peek64 = ptrace(PTRACE_PEEKDATA, mainThreadId, address, 0);
-	//LLOG("\t Read memory at break point id:"<<mainThreadId<<" 0x"<<Hex(address)<<" of 0x"<<Hex((byte)peek64));
-	// Insert breakpoint instruction
-	uint64 int3 = (~(uint64)0xff&peek64) | 0xcc;
-	prev = (byte)peek64;
-	if (ptrace(PTRACE_POKEDATA, mainThreadId, address, int3)==-1) {
-		LLOG("\t Write memory failed id:"<<mainThreadId<<" at 0x"<<Hex(address)<<" of 0x"<<Hex(int3)<<" - "<<strerror(errno));
-		return false;
+	breakResume = false;
+	if(running) {
+		// Need to halt debugee to allow break points to be set
+		breakResume = true;
+		BreakRunning();
+		return true; // Return true without setting prev
 	}
-	LLOG("\t Write memory at break point id:"<<mainThreadId<<" 0x"<<Hex(address)<<" to 0x"<<Hex((byte)int3)<<" previous was 0x"<<Hex(prev));
-	
-#endif
+	else {
+	#ifdef CPU_ARM
+		// Read original instruction
+		uint64 peek64 = ptrace(PTRACE_PEEKDATA, mainThreadId, address, 0);
+		//LLOG("\t Read memory at break point id:"<<mainThreadId<<" 0x"<<Hex(address)<<" of 0x"<<Hex(peek64));
+		// Insert breakpoint instruction
+		uint64 bp = (~(uint64)0xffffffff&peek64) | 0xd4200000; // AArch64 uses the BRK #<immediate> instruction 0xD4200000
+		prev = 0xffffffff&peek64;
+		if (ptrace(PTRACE_POKEDATA, mainThreadId, address, bp)==-1) {
+			LLOG("\t Write memory failed id:"<<mainThreadId<<" at 0x"<<Hex(address)<<" of 0x"<<Hex(bp)<<" - "<<strerror(errno));
+			return false;
+		}
+		LLOG("\t Write memory at break point id:"<<mainThreadId<<" 0x"<<Hex(address)<<" to 0x"<<Hex((byte)bp)<<" previous was 0x"<<Hex(prev));
+	#else
+		// Read original instruction
+		uint64 peek64 = ptrace(PTRACE_PEEKDATA, mainThreadId, address, 0);
+		//LLOG("\t Read memory at break point id:"<<mainThreadId<<" 0x"<<Hex(address)<<" of 0x"<<Hex((byte)peek64));
+		// Insert breakpoint instruction
+		uint64 int3 = (~(uint64)0xff&peek64) | 0xcc;
+		prev = (byte)peek64;
+		if (ptrace(PTRACE_POKEDATA, mainThreadId, address, int3)==-1) {
+			LLOG("\t Write memory failed id:"<<mainThreadId<<" at 0x"<<Hex(address)<<" of 0x"<<Hex(int3)<<" - "<<strerror(errno));
+			return false;
+		}
+		LLOG("\t Write memory at break point id:"<<mainThreadId<<" 0x"<<Hex(address)<<" to 0x"<<Hex((byte)int3)<<" previous was 0x"<<Hex(prev));
+	#endif
+	}
 
 #endif
 
@@ -187,30 +190,32 @@ bool Pdb::RemoveBp(adr_t address)
 
 #else
 
-#ifdef CPU_ARM
-
-	// Dwarf ARM implementation
-	int64 peek64 = ptrace(PTRACE_PEEKDATA, mainThreadId, address, 0);
-	uint64 poke64 = (~(uint64)0xffffffffff&peek64) | bp_set[pos];
-	if(ptrace(PTRACE_POKEDATA, mainThreadId, address, poke64, NULL)==-1) {
-		LLOG("\t Poke id:"<<mainThreadId<<" at 0x"<<Hex(address)<<" of 0x"<<Hex(poke64)<<" failed - "<<strerror(errno));
-		return false;
-	}
-	LLOG("\t Restore memory at break point 0x"<<Hex(address)<<" to 0x"<<Hex(bp_set[pos]));
-
-#else
-
 	// Dwarf implementation
-	int64 peek64 = ptrace(PTRACE_PEEKDATA, mainThreadId, address, 0);
-	uint64 poke64 = (~(uint64)0xff&peek64) | ((byte)bp_set[pos]);
-	if(ptrace(PTRACE_POKEDATA, mainThreadId, address, poke64, NULL)==-1) {
-		LLOG("\t Poke id:"<<mainThreadId<<" at 0x"<<Hex(address)<<" of 0x"<<Hex(poke64)<<" failed - "<<strerror(errno));
-		return false;
+	breakResume = false;
+	if(running) {
+		// Need to halt debugee to allow break points to be set
+		breakResume = true;
+		BreakRunning();
 	}
-	LLOG("\t Restore memory at break point 0x"<<Hex(address)<<" to 0x"<<Hex(bp_set[pos]));
-
-#endif
-
+	else {
+	#ifdef CPU_ARM
+		int64 peek64 = ptrace(PTRACE_PEEKDATA, mainThreadId, address, 0);
+		uint64 poke64 = (~(uint64)0xffffffffff&peek64) | bp_set[pos];
+		if(ptrace(PTRACE_POKEDATA, mainThreadId, address, poke64, NULL)==-1) {
+			LLOG("\t Poke id:"<<mainThreadId<<" at 0x"<<Hex(address)<<" of 0x"<<Hex(poke64)<<" failed - "<<strerror(errno));
+			return false;
+		}
+		LLOG("\t Restore memory at break point 0x"<<Hex(address)<<" to 0x"<<Hex(bp_set[pos]));
+	#else
+		int64 peek64 = ptrace(PTRACE_PEEKDATA, mainThreadId, address, 0);
+		uint64 poke64 = (~(uint64)0xff&peek64) | ((byte)bp_set[pos]);
+		if(ptrace(PTRACE_POKEDATA, mainThreadId, address, poke64, NULL)==-1) {
+			LLOG("\t Poke id:"<<mainThreadId<<" at 0x"<<Hex(address)<<" of 0x"<<Hex(poke64)<<" failed - "<<strerror(errno));
+			return false;
+		}
+		LLOG("\t Restore memory at break point 0x"<<Hex(address)<<" to 0x"<<Hex(bp_set[pos]));
+	#endif
+	}
 #endif
 
 	bp_set.Unlink(pos);
@@ -793,7 +798,9 @@ bool Pdb::RunToException()
 								break_running = false;
 								LLOG("<<< Debugee is paused "<<debug_threadid);
 								RemoveBp();
-								return true; // Target is paused
+								if (!breakResume) {
+									return true; // Target is paused
+								}
 							}
 						}
 					break;

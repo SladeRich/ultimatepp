@@ -666,7 +666,7 @@ bool Pdb::GetTypeVal(Pdb::Val* val, Dwarf_Die die) {
 							if (dwarf_attr(&typeDie, DW_AT_calling_convention, &ccAttr) != NULL) {
 								if (dwarf_formudata(&ccAttr, &cc) == 0) {
 									if (cc == DW_CC_pass_by_reference) {
-										reference = true;
+///										reference = true;
 									}
 								}
 							}
