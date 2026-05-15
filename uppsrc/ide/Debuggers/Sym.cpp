@@ -2,7 +2,6 @@
 
 #ifdef PLATFORM_WIN32
 #else
-//#include <dlfcn.h>
 #include <dwarf.h>
 #include <cxxabi.h>
 #include <sys/ptrace.h>
@@ -79,6 +78,7 @@ const char * BaseTypeAsString( dword baseType )
 adr_t Pdb::GetAddress(FilePos p)
 {
 #ifdef PLATFORM_WIN32
+
 	LONG dummy;
 	IMAGEHLP_LINE ln;
 	ln.SizeOfStruct = sizeof(ln);
@@ -88,64 +88,83 @@ adr_t Pdb::GetAddress(FilePos p)
 		LLOG("GetAddress " << p.path << "(" << p.line << "): " << Hex(ln.Address));
 		return ln.Address;
 	}
+	
 #else
+
 	// Dwarf implementation
 	unsigned pline = p.line + 1;
-	Dwarf_Addr adr = 0;
-	Dwarf_Off off = 0;
-	Dwarf_Off next;
-	size_t hdrSz;
-	// Iterate over compilation units (CU)
-	while (dwarf_nextcu(dwarf, off, &next, &hdrSz, NULL, NULL, NULL) == 0) {
-		Dwarf_Die cu;
-		if (dwarf_offdie(dwarf, off + hdrSz, &cu) != NULL) {
-			Dwarf_Lines *lines;
-			size_t nlines;
-			if (dwarf_getsrclines(&cu, &lines, &nlines) == 0) {
-				unsigned best = ~0;
-				Dwarf_Addr a = 0;
-				for (size_t i = 0; i < nlines; i++) {
-					Dwarf_Line *line = dwarf_onesrcline(lines, i);
-					size_t fi;
-					Dwarf_Files *files;
-					dwarf_line_file(line, &files, &fi);
-					const char *filename = dwarf_filesrc(files, fi, NULL, NULL);
-					if (strcmp(p.path,filename)==0) {
-						int lineNum;
-						dwarf_lineaddr(line, &a);
-						dwarf_lineno(line, &lineNum);
-						if (pline<=lineNum) {
-							if (pline==lineNum) {
-								adr = a;
-								LLOG("GetAddress " << p.path << "(" << pline << "): 0x" << Hex(adr) << " line:"<<lineNum);
-								best = 0;
-								break;
-							}
-							unsigned diff = lineNum - pline;
-							if (best>diff) {
-								best = diff;
+	adr_t adr = 0;
+	Dwarf_Line** matches = NULL;
+	size_t match_count = 0;
+	// Retrieve lines matching file and line
+	int result = dwarf_getsrc_file(dwarf, p.path, pline, 0, &matches, &match_count);
+	if (result == 0 && match_count > 0) {
+		for (size_t i = 0; i < match_count; ++i) {
+			Dwarf_Addr addr;
+			if (dwarf_lineaddr(matches[i], &addr) == 0) {
+				adr = addr;
+				break;
+			}
+		}
+	}
+	if (!adr) {
+		// Try looking using relative file path - note it does not deal with this type "paint/../color.h"
+		size_t plen = strlen(p.path);
+		Dwarf_Off off = 0;
+		Dwarf_Off next;
+		size_t hdrSz;
+		// Iterate over compilation units (CU)
+		while (dwarf_nextcu(dwarf, off, &next, &hdrSz, NULL, NULL, NULL) == 0) {
+			Dwarf_Die cu;
+			if (dwarf_offdie(dwarf, off + hdrSz, &cu) != NULL) {
+				Dwarf_Lines *lines;
+				size_t nlines;
+				if (dwarf_getsrclines(&cu, &lines, &nlines) == 0) {
+					unsigned best = ~0;
+					Dwarf_Addr a = 0;
+					for (size_t i = 0; i < nlines; i++) {
+						Dwarf_Line *line = dwarf_onesrcline(lines, i);
+						size_t fi;
+						Dwarf_Files *files;
+						dwarf_line_file(line, &files, &fi);
+						const char *filename = dwarf_filesrc(files, fi, NULL, NULL);
+						if (filename[0]!='/') {
+							size_t len = strlen(filename);
+							if (len < plen) {
+								if (strcmp(~p.path+(plen-len),filename)==0) {
+									int lineNum;
+									dwarf_lineaddr(line, &a);
+									dwarf_lineno(line, &lineNum);
+									if (pline<=lineNum) {
+										if (pline==lineNum) {
+											adr = a;
+											LLOG("GetAddress " << p.path << "(" << pline << "): 0x" << Hex(adr) << " line:"<<lineNum);
+											best = 0;
+											break;
+										}
+										unsigned diff = lineNum - pline;
+										if (best>diff) {
+											best = diff;
+										}
+									}
+								}
 							}
 						}
-					}
-					if (best != 0 && best != ~0) {
-						adr = a;
+						if (best != 0 && best != ~0) {
+							adr = a;
+						}
 					}
 				}
 			}
+			off = next;
 		}
-		off = next;
 	}
-//	Dl_info info;
-//	if(adr && dladdr((void*)adr, &info)) {
-//		adr_t pc = adr + (adr_t)info.dli_fbase;
-//		LLOG("GetAddress " << p.path << "(" << pline << "): 0x" << Hex(pc));
-//		return pc;
-//	}
 	if (adr) {
 		adr_t pc = adr + baseAddress;
 		LLOG("GetAddress " << p.path << "(" << pline << "): 0x" << Hex(pc));
 		return pc;
 	}
+	
 #endif
 
 return 0;
