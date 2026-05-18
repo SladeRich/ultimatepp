@@ -798,7 +798,10 @@ bool Pdb::RunToException()
 								break_running = false;
 								LLOG("<<< Debugee is paused "<<debug_threadid);
 								RemoveBp();
-								if (!breakResume) {
+								if (breakResume) {
+									SetBreakpoints();
+								}
+								else {
 									return true; // Target is paused
 								}
 							}
