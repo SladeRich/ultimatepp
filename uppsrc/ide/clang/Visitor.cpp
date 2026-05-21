@@ -364,6 +364,7 @@ bool ClangVisitor::ProcessNode(CXCursor cursor)
 			rm.pos = sl.pos;
 			rm.id = ref_ci.Id();
 			rm.ref_pos = ref_loc.pos;
+			rm.macro = ref_ci.Kind() == CXCursor_MacroDefinition;
 		#if 0
 			DLOG("=======");
 			DDUMP(sl.pos);
