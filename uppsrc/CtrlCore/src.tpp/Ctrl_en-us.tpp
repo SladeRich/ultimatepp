@@ -1013,7 +1013,7 @@ sequential scan of child (results in O(n) complexity).&]
 [s5;:Upp`:`:Ctrl`:`:GetAscendant`(`)const:%- [@(0.0.255) template]_<[@(0.0.255) class]_[*@4 T
 ]>_[*@4 T]_`*[* GetAscendant]()_[@(0.0.255) const]&]
 [s2; Returns first ascendant (parent, parent of parent etc..) that 
-has type [%-*@4 T].&]
+is of type [%-*@4 T].or nullptr if no such ascendant exists.&]
 [s3;%- &]
 [s4;%- &]
 [s5;:Ctrl`:`:GetIndexChild`(int`)const:%- [_^Ctrl^ Ctrl]_`*[* GetIndexChild]([@(0.0.255) in
