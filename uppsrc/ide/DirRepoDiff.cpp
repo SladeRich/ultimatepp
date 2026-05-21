@@ -32,7 +32,7 @@ DirRepoDiffDlg::DirRepoDiffDlg()
 		for(String s : git)
 			l.Add(s, "git " + s);
 		AddSelectGit(l);
-		
+
 		branch[i] << [=] { Revs(i); };
 	};
 
@@ -66,19 +66,19 @@ DirRepoDiffDlg::DirRepoDiffDlg()
 
 	files_pane.Add(files.VSizePos(y, Zy(24)).HSizePos());
 	files_pane.Add(find.BottomPosZ(6, 19).HSizePosZ());
-	
+
 	extension.Disable();
 
 	Mode(0);
 	Mode(1);
-	
+
 	compare ^= [=] { Compare(); };
-	
+
 	dir1 << [=] { SyncCompare(); };
 	dir2 << [=] { SyncCompare(); };
-	
+
 	session_id = String() << Random() << Random() << Random() << Random();
-	
+
 	branch[0].SetDropLines(32);
 	branch[1].SetDropLines(32);
 	r[0].SetDropLines(32);
@@ -126,10 +126,10 @@ void DirRepoDiffDlg::Mode(int i)
 		LoadBranches(branch[i], ~~dl);
 		Revs(i);
 	}
-	
+
 	ClearFiles();
 	SyncCompare();
-	
+
 	editable_left = !IsGit(0);
 	editable_right = !IsGit(1);
 }
