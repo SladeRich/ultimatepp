@@ -13,5 +13,6 @@ file
 mainconfig
 	"" = "GUI",
 	"" = "GUI FORCE_CSD",
-	"" = "GUI X11";
+	"" = "GUI X11",
+	"" = "GUI X11 PORTABLE_HYBRID";
 
