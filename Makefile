@@ -399,6 +399,12 @@ $(OutFile): build_info  \
 			`pkg-config --libs xext` \
 			`pkg-config --libs gtk+-3.0` \
 			`pkg-config --libs libnotify` \
+			`pkg-config --libs libelf` \
+			`pkg-config --libs libdw` \
+			`pkg-config --libs libunwind` \
+			`pkg-config --libs libunwind-generic` \
+			`pkg-config --libs libunwind-ptrace` \
+			`pkg-config --libs capstone` \
 			-lbz2 \
 			-lcrypto \
 			-lssl \
