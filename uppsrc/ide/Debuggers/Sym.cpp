@@ -7,7 +7,7 @@
 #include <sys/ptrace.h>
 #endif
 
-#define LLOG(x)  DLOG(x)
+#define LLOG(x) //  DLOG(x)
 
 #ifdef _DEBUG
 

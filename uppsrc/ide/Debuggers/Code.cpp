@@ -336,17 +336,21 @@ bool Pdb::Step(bool over)
 				#endif
 				if(cs_open(arch, mode, &handle) != CS_ERR_OK)
 					return 0;
-				size_t count = cs_disasm(handle, code, i, ip, 0, &insn);
-				char *pout = out;
+				size_t count = cs_disasm(handle, code, i, ip, 1, &insn);
 				if(count > 0) {
-					for(size_t j = 0; j < count; i++) {
-						sprintf(pout,"0x%s:\t%s\t\t%s\n", ~Hex(insn[i].address), insn[i].mnemonic, insn[i].op_str);
-						pout += strlen(pout);
-					}
+					cs_insn &ins = insn[0];
+					sprintf(out,"%s\t%s", ins.mnemonic, ins.op_str);
+					l = (int)ins.size;
+					//LLOG("Pdb::Disassemble count:"<<count<<" sz:"<<sz<<" ip:0x"<<Hex(ip)<<" asm:"<<out);
 					cs_free(insn, count);
 				}
+				else {
+					// This must be data not code
+					sprintf(out, ".byte %02x",code[0]);
+					l = 1;
+				}
 				cs_close(&handle);
-				int sz = strlen(out);
+				
 #endif
 			}
 			adr_t bp0 = GetIP();

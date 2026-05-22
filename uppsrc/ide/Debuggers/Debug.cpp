@@ -14,7 +14,7 @@
 #define STATUS_WX86_EXCEPTION_LASTCHANCE 0x40000021
 #define STATUS_WX86_EXCEPTION_CHAIN      0x40000022
 
-#define LLOG(x)  DLOG(x)
+#define LLOG(x) // DLOG(x)
 
 String Pdb::Hex(adr_t a)
 {
@@ -798,7 +798,10 @@ bool Pdb::RunToException()
 								break_running = false;
 								LLOG("<<< Debugee is paused "<<debug_threadid);
 								RemoveBp();
-								if (!breakResume) {
+								if (breakResume) {
+									SetBreakpoints();
+								}
+								else {
 									return true; // Target is paused
 								}
 							}
