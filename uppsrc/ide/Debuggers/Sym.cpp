@@ -7,7 +7,7 @@
 #include <sys/ptrace.h>
 #endif
 
-#define LLOG(x)  DLOG(x)
+#define LLOG(x) //  DLOG(x)
 
 #ifdef _DEBUG
 
@@ -1192,8 +1192,6 @@ const Pdb::Type& Pdb::GetType(int ti)
 
 	// Dwarf implementation
 	LLOG("PDB::GetType for \""<<t.name<<"\" "<<ti<<'/'<<type.GetCount());
-if (ti==1096)
-	DLOG("die:"<<t.die.addr);
 	if(t.size < 0) {
 		t.name = dwarf_diename(&t.die);
 		Dwarf_Word size = -1;
