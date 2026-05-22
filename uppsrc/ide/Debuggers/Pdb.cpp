@@ -74,7 +74,7 @@ void TerminateChildProcesses(dword dwProcessId, unsigned int uExitCode) {
 #pragma comment(lib, "DbgHelp.lib")
 #pragma comment(lib, "psapi.lib")
 
-#define LLOG(x)  DLOG(x)
+#define LLOG(x) //  DLOG(x)
 
 using namespace PdbKeys;
 
