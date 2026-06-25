@@ -89,12 +89,14 @@ void StartEditorMode(const Vector<String>& args, Ide& ide, bool& clset)
 	for(int i = 0; i < args.GetCount(); i++) {
 		if(*args[i] != '-') {
 			String file_path = NormalizePath(args[i]);
+			if (FileExists(file_path)) { // Prevent it from trying to edit working directory argument if it is set
 			
-			Logd() << FUNCTION_NAME << "Opening file \"" << file_path << "\".";
-			
-			ide.EditFile(file_path);
-			ide.FileSelected();
-			editor = true;
+				Logd() << FUNCTION_NAME << "Opening file \"" << file_path << "\".";
+				
+				ide.EditFile(file_path);
+				ide.FileSelected();
+				editor = true;
+			}
 		}
 	}
 	

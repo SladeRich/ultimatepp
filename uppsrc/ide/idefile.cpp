@@ -499,6 +499,7 @@ void Ide::EditFile0(const String& path, byte charset, int spellcheck_comments, c
 	editor.CheckEdited(false);
 	editor.CloseAssist();
 	if(path.IsEmpty()) return;
+	if(DirectoryExists(path)) return;
 	FlushFile();
 
 	editfile = path;
