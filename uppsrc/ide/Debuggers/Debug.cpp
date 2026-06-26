@@ -821,7 +821,7 @@ bool Pdb::RunToException()
 							LLOG("\t Got SIGSEGV("<<info.si_signo<<") code:"<<info.si_code);
 							ToForeground();
 							BeepError();
-							String desc = "Debug caught exeception";
+							String desc = "Debug caught exception";
 							if (info.si_errno!=0)
 								desc << " - " << strerror(info.si_errno);
 							if(!Prompt(Ctrl::GetAppName(), CtrlImg::error(), desc, t_("OK"), t_("Stop"))) {
@@ -832,9 +832,14 @@ bool Pdb::RunToException()
 									DR_LOG("Exit thread: " << pid);
 									LLOG("Exit thread: " << pid);
 								}
-								LLOG("<<< Debugee aborted "<<pid);
-								return false; // Target has an exception, user has opted out
+								LLOG("*** Debugee aborted after exception ***"<<pid);
+								return false; // Target has an exception, user has opted to abort
 							}
+							if(disasfocus)
+								disas.SetFocus();
+							if(locked)
+								Unlock();
+							break_running = false;
 							return true; // Pause target to allow inspection of fault
 						}
 						break;
