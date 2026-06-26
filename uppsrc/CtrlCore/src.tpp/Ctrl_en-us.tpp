@@ -1700,52 +1700,16 @@ Actual repaint is deferred for performance reasons.&]
 [s5;:Ctrl`:`:ScrollView`(const Rect`&`,int`,int`):%- [@(0.0.255) void]_[* ScrollView]([@(0.0.255) c
 onst]_[_^Rect^ Rect][@(0.0.255) `&]_[*@3 r], [@(0.0.255) int]_[*@3 dx], 
 [@(0.0.255) int]_[*@3 dy])&]
-[s2; Marks requested view rectangle for repainting, indicating that 
-part of this repaint can be done by scrolling current content 
-of rectangle. Note that actual scroll is deferred to repaint 
-and that U`+`+ is still allowed to solve the situation by repainting 
-rather than scrolling.&]
-[s7;i1120;a17; [%-*C@3 r]-|Area for repainting.&]
-[s7;i1120;a17; [%-*C@3 dx]-|Horizontal scroll.&]
-[s7;i1120;a17; [%-*C@3 dy]-|Vertical scroll.&]
-[s3;%- &]
-[s4;%- &]
 [s5;:Ctrl`:`:ScrollView`(int`,int`,int`,int`,int`,int`):%- [@(0.0.255) void]_[* ScrollVie
 w]([@(0.0.255) int]_[*@3 x], [@(0.0.255) int]_[*@3 y], [@(0.0.255) int]_[*@3 cx], 
 [@(0.0.255) int]_[*@3 cy], [@(0.0.255) int]_[*@3 dx], [@(0.0.255) int]_[*@3 dy])&]
-[s2;b17;a17; Marks requested view rectangle for repainting, indicating 
-that part of this repaint can be done by scrolling current content 
-of rectangle. Note that actual scroll is deferred to repaint 
-and that U`+`+ is still allowed to solve the situation by repainting 
-rather than scrolling.&]
-[s7;i1120;a17; [%-*C@3 r]-|Area for repainting.&]
-[s7;i1120;a17; [%-*C@3 x]-|Left position of rectangle.&]
-[s7;i1120;a17; [%-*C@3 y]-|Top position of rectangle.&]
-[s7;i1120;a17; [%-*C@3 cx]-|Width.&]
-[s7;i1120;a17; [%-*C@3 cy]-|Height.&]
-[s7;i1120;a17; [%-*C@3 dx]-|Horizontal scroll.&]
-[s7;i1120;a17; [%-*C@3 dy]-|Vertical scroll.&]
-[s3;%- &]
-[s4;%- &]
 [s5;:Ctrl`:`:ScrollView`(int`,int`):%- [@(0.0.255) void]_[* ScrollView]([@(0.0.255) int]_[*@3 d
 x], [@(0.0.255) int]_[*@3 dy])&]
-[s2;b17;a17; Marks while view area for repainting, indicating that 
-part of this repaint can be done by scrolling current content 
-of rectangle. Note that actual scroll is deferred to repaint 
-and that U`+`+ is still allowed to solve the situation by repainting 
-rather than scrolling.&]
-[s7;i1120;a17; [%-*C@3 dx]-|Horizontal scroll.&]
-[s7;i1120;a17; [%-*C@3 dy]-|Vertical scroll.&]
-[s3;%- &]
-[s4;%- &]
 [s5;:Ctrl`:`:ScrollView`(const Rect`&`,Size`):%- [@(0.0.255) void]_[* ScrollView]([@(0.0.255) c
 onst]_[_^`:`:Rect^ Rect][@(0.0.255) `&]_[*@3 r], [_^`:`:Size^ Size]_[*@3 delta])&]
-[s2;b17;a17; Same as ScrollView(r, delta.cx, delta.cy).&]
-[s3;%- &]
-[s4;%- &]
 [s5;:Ctrl`:`:ScrollView`(Size`):%- [@(0.0.255) void]_[* ScrollView]([_^`:`:Size^ Size]_[*@3 d
 elta])&]
-[s2;b17;a17; Same as ScrollView(delta.cx, delta.cy).&]
+[s2;b17;a17; Deprecated. Same as calling Refresh().&]
 [s3;%- &]
 [s4;%- &]
 [s5;:Ctrl`:`:Sync`(`):%- [@(0.0.255) void]_[* Sync]()&]
@@ -2678,6 +2642,11 @@ ryScreenArea]()&]
 in Windows is the display with start menu.&]
 [s3;%- &]
 [s4;%- &]
+[s5;:Upp`:`:Ctrl`:`:GetWorkAreas`(Array`&`):%- [@(0.0.255) static] 
+[@(0.0.255) void] [* GetWorkAreas](Array<Rect>[@(0.0.255) `&] [*@3 rc])&]
+[s2; Returns all available work areas.&]
+[s3;%- &]
+[s4;%- &]
 [s5;:Ctrl`:`:GetWorkArea`(Point`):%- [@(0.0.255) static] [_^Rect^ Rect]_[* GetWorkArea]([_^Point^ P
 oint]_[*@3 pt])&]
 [s2; Returns the recangle of work area which contains [%-*@3 pt]. If 
@@ -2685,10 +2654,22 @@ oint]_[*@3 pt])&]
 area.&]
 [s3; &]
 [s4;%- &]
+[s5;:Upp`:`:Ctrl`:`:GetWorkArea`(const Ctrl`*`,Point`):%- [@(0.0.255) static] 
+Rect [* GetWorkArea]([@(0.0.255) const] Ctrl [@(0.0.255) `*][*@3 owner], 
+Point [*@3 pt])&]
+[s2; If [%-*@3 owner] is not nullptr, return owner`->GetWorkArea(), 
+otherwise GetWorkArea([%-*@3 pt)].&]
+[s3;%- &]
+[s4;%- &]
 [s5;:Ctrl`:`:GetMouseWorkArea`(`):%- [@(0.0.255) static] [_^Rect^ Rect]_[* GetMouseWorkArea
 ]()&]
 [s2; Returns the work are which contains mouse cursor. Same as GetWorkArea(GetMousePo
 s()).&]
+[s3;%- &]
+[s4;%- &]
+[s5;:Upp`:`:Ctrl`:`:GetMouseWorkArea`(Ctrl`*`):%- [@(0.0.255) static] 
+Rect [* GetMouseWorkArea](Ctrl [@(0.0.255) `*][*@3 owner])&]
+[s2; Same as GetWorArea([%-*@3 owner], GetMousePos()).&]
 [s3;%- &]
 [s4;%- &]
 [s5;:Ctrl`:`:GetKbdDelay`(`):%- [@(0.0.255) static] [@(0.0.255) int]_[* GetKbdDelay]()&]
