@@ -288,7 +288,7 @@ bool Ctrl::IsOpen() const
 {
 	GuiLock __;
 	const Ctrl *q = GetTopCtrl();
-	return q->isopen && q->IsWndOpen();
+	return q->IsVirtualPopUp() || q->isopen && q->IsWndOpen();
 }
 
 void Ctrl::Show(bool ashow) {
@@ -542,7 +542,6 @@ Ctrl::Ctrl() {
 	frame.SetView(Null);
 	enabled = visible = wantfocus = initfocus = true;
 	editable = true;
-	backpaint = IsCompositedGui() ? FULLBACKPAINT : TRANSPARENTBACKPAINT;
 	inframe = false;
 	ignoremouse = transparent = false;
 	pos.x = PosLeft(0, 0);
@@ -627,7 +626,10 @@ void Ctrl::Close()
 	if(GetParent()) return;
 	StateH(CLOSE);
 	USRLOG("   CLOSE " + Desc(this));
-	WndDestroy();
+	if(IsVirtualPopUp())
+		CloseVirtualPopUp();
+	else
+		WndDestroy();
 	visible = true;
 	popup = false;
 }
@@ -862,6 +864,14 @@ static bool _ClickFocus;
 bool Ctrl::ClickFocus() { return _ClickFocus; }
 void Ctrl::ClickFocus(bool cf) { _ClickFocus = cf; }
 
+Vector<Ctrl *> Ctrl::GetTopCtrls()
+{
+	Vector<Ctrl *> tops = GetTopWndCtrls();
+	for(Ctrl *c : virtual_popups)
+		if(c)
+			tops << c;
+	return tops;
+}
 
 Vector<Ctrl *> Ctrl::GetTopWindows()
 {
