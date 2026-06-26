@@ -513,6 +513,7 @@ void Pdb::ToForeground()
 		LLOG("Setting theide as foreground");
 		w->SetForeground();
 	}
+	if (w) w->Overlap(); // Raise over the top of other applications
 }
 
 bool Pdb::RunToException()
@@ -985,7 +986,8 @@ void Pdb::BreakRunning() //TODO: Fix in wow64?
 #else
 	// Dwarf implementation
 	LLOG("Pdb::BreakRunning mainThreadId:"<<mainThreadId);
-	kill(mainThreadId, SIGSTOP);
+	if(kill(mainThreadId, SIGSTOP) == -1)
+		Exclamation((String)"Failed to halt process " << mainThreadId);
 #endif
 	}
 }

@@ -107,9 +107,21 @@ Array<Pdb::Frame> Pdb::Backtrace(Thread& ctx, bool single_frame, bool thread_inf
 		uint64 lastFrame = 0; // Prevent loops with optimised stackframes
 		// Unwind frames one by one, going up the frame stack
 		do {
-			unw_word_t ip, sp, offset;
+			unw_word_t ip, sp, bp, offset;
 			unw_get_reg(&cursor, UNW_REG_IP, &ip);
 			unw_get_reg(&cursor, UNW_REG_SP, &sp);
+			#if defined(__x86_64__)
+			unw_get_reg(&cursor, UNW_X86_64_RBP, &bp);
+			#elif defined(__i386__)
+			unw_get_reg(&cursor, UNW_X86_EBP, &bp);
+			#elif defined(__aarch64__)
+			unw_get_reg(&cursor, UNW_AARCH64_X29, &bp);
+			#elif defined(__arm__)
+			unw_get_reg(&cursor, UNW_ARM_R11, &bp);
+			#else
+			#error "Unsupported architecture for frame pointer retrieval"
+			bp = 0;
+			#endif
 			char name[256];
 			name[0] = 0;
 			unw_get_proc_name(&cursor, name, sizeof(name), &offset);
@@ -141,6 +153,9 @@ Array<Pdb::Frame> Pdb::Backtrace(Thread& ctx, bool single_frame, bool thread_inf
 					}
 				}
 				else {
+					cctx.SetSP(f.stack);
+					cctx.SetIP(f.pc);
+					cctx.SetBP(bp);
 					GetLocals(f, cctx, f.param, f.local);
 					if(single_frame)
 						return frame;

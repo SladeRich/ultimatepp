@@ -7,7 +7,7 @@
 #include <sys/ptrace.h>
 #endif
 
-#define LLOG(x) //  DLOG(x)
+#define LLOG(x) // DLOG(x)
 
 #ifdef _DEBUG
 
@@ -108,7 +108,7 @@ adr_t Pdb::GetAddress(FilePos p)
 		}
 	}
 	if (!adr) {
-		// Try looking using relative file path - note it does not deal with this type "paint/../color.h"
+		// Try looking using relative file path
 		size_t plen = strlen(p.path);
 		Dwarf_Off off = 0;
 		Dwarf_Off next;
@@ -123,30 +123,40 @@ adr_t Pdb::GetAddress(FilePos p)
 					unsigned best = ~0;
 					Dwarf_Addr a = 0;
 					for (size_t i = 0; i < nlines; i++) {
+						bool fileMatch = false;
 						Dwarf_Line *line = dwarf_onesrcline(lines, i);
 						size_t fi;
 						Dwarf_Files *files;
 						dwarf_line_file(line, &files, &fi);
 						const char *filename = dwarf_filesrc(files, fi, NULL, NULL);
 						if (filename[0]!='/') {
+							// Only check relative path
 							size_t len = strlen(filename);
 							if (len < plen) {
 								if (strcmp(~p.path+(plen-len),filename)==0) {
-									int lineNum;
-									dwarf_lineaddr(line, &a);
-									dwarf_lineno(line, &lineNum);
-									if (pline<=lineNum) {
-										if (pline==lineNum) {
-											adr = a;
-											LLOG("GetAddress " << p.path << "(" << pline << "): 0x" << Hex(adr) << " line:"<<lineNum);
-											best = 0;
-											break;
-										}
-										unsigned diff = lineNum - pline;
-										if (best>diff) {
-											best = diff;
-										}
-									}
+									fileMatch = true;
+								}
+							}
+						} else {
+							String fn = NormalizePath(filename);
+							if (fn==p.path) {
+								fileMatch = true;
+							}
+						}
+						if (fileMatch) {
+							int lineNum;
+							dwarf_lineaddr(line, &a);
+							dwarf_lineno(line, &lineNum);
+							if (pline<=lineNum) {
+								if (pline==lineNum) {
+									adr = a;
+									LLOG("GetAddress " << p.path << "(" << pline << "): 0x" << Hex(adr) << " line:"<<lineNum);
+									best = 0;
+									break;
+								}
+								unsigned diff = lineNum - pline;
+								if (best>diff) {
+									best = diff;
 								}
 							}
 						}
@@ -163,6 +173,8 @@ adr_t Pdb::GetAddress(FilePos p)
 		adr_t pc = adr + baseAddress;
 		LLOG("GetAddress " << p.path << "(" << pline << "): 0x" << Hex(pc));
 		return pc;
+	} else {
+		LLOG("Pdb::GetAddress failed to find " << p.path << "(" << pline << ")");
 	}
 	
 #endif
@@ -843,13 +855,13 @@ bool Pdb::GetTypeVal(Pdb::Val* val, Dwarf_Die die) {
 								adr = baseAddress + eaddr;
 							}
 						}
-						else if (DW_OP_lit0 <= exp.atom && exp.atom <= DW_OP_lit31) { // Literal encodings, value is  on to the stack
+						else if (DW_OP_lit0 <= exp.atom && exp.atom <= DW_OP_lit31) { // Literal encoding, value is  on to the stack
 							NEVER();
 						}
-						else if (exp.atom == DW_OP_addr) { // Literal encodings, value at address
+						else if (exp.atom == DW_OP_addr) { // Literal encoding, value at address
 							NEVER();
 						}
-						else if (exp.atom == DW_OP_constu) { // Literal encodings, unsigned value on to the stack
+						else if (exp.atom == DW_OP_constu) { // Literal encoding, unsigned value on to the stack
 							NEVER();
 						}
 						else if (exp.atom == DW_OP_stack_value) { // Value is on top of stack
@@ -963,9 +975,15 @@ void Pdb::GetLocals(Frame& frame, Context& context, VectorMap<String, Pdb::Val>&
 	local = pick(c.local);
 #else
 	// Dwarf implementation
+	adr_t ipOrg = this->context.GetIP();
+	adr_t bpOrg = this->context.GetBP();
+	adr_t spOrg = this->context.GetSP();
 	adr_t ip = context.GetIP();
 	adr_t bp = context.GetBP();
 	adr_t sp = context.GetSP();
+	this->context.SetIP(ip);
+	this->context.SetBP(bp);
+	this->context.SetSP(sp);
   Dwarf_Addr addr = ip - baseAddress;
 	LLOG("Pdb::GetLocals ip:0x"<<Hex(ip)<<" baseAddress:0x"<<Hex(baseAddress)<<" addr:0x"<<Hex(addr));
 	Dwarf_Off off = 0;
@@ -1000,6 +1018,9 @@ void Pdb::GetLocals(Frame& frame, Context& context, VectorMap<String, Pdb::Val>&
 		}
 		off = next;
 	}
+	this->context.SetIP(ipOrg);
+	this->context.SetBP(bpOrg);
+	this->context.SetSP(spOrg);
 #endif
 	LLOG("===========================");
 }

@@ -363,7 +363,7 @@ void Ide::BuildAndDebug(bool runto)
 	bool console = ShouldHaveConsole();
 
 	String dbg = bm.Get("DEBUGGER", Null);
-	bool gdb = ToUpper(dbg) == "GDB";
+	bool gdb = ToUpper(dbg) == "GDB" || ToUpper(dbg) == "LLDB"; // User has specified external debugger
 	if(!gdb && findarg(builder, "GCC") < 0) // llvm-mingw can generate pdb symbolic info
 		debugger = PdbCreate(host, target, runarg, builder == "CLANG");
 	else
