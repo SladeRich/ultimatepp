@@ -67,6 +67,7 @@ file
 	Insert.cpp,
 	Sequence.cpp,
 	idetool.cpp,
+	UnInitMembers.cpp,
 	Install.cpp,
 	Android.cpp,
 	idebar.cpp,
@@ -125,6 +126,7 @@ file
 
 mainconfig
 	"" = "GUI",
+	"" = "GUI DEVELOP_VIRTUALPOPUPS",
 	"" = "GUI LCLANG",
 	"" = "GUI USEMALLOC",
 	"" = "GUI HEAPDBG CHECKINIT",
