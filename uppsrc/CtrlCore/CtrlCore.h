@@ -19,7 +19,6 @@
 		#define GUIPLATFORM_KEYCODES_INCLUDE <Turtle/Keys.h>
 		//need to make SDL_keysym.h known before K_ enum
 		#define GUIPLATFORM_INCLUDE          <Turtle/Turtle.h>
-		#define GUIPLATFORM_NOSCROLL
 		#define PLATFORM_TURTLE
 		#define TURTLE
 	#elif VIRTUALGUI
@@ -27,7 +26,6 @@
 		#define GUIPLATFORM_INCLUDE          <VirtualGui/VirtualGui.h>
 	#elif PLATFORM_COCOA
 		#define GUIPLATFORM_INCLUDE          "Coco.h"
-		#define GUIPLATFORM_NOSCROLL
 	#elif PLATFORM_WIN32
 		#define GUIPLATFORM_INCLUDE "Win32Gui.h"
 	#else
@@ -499,12 +497,6 @@ private:
 		Rect GetView() const        { return Rect16(view.left, view.top, view.right, view.bottom); }
 	};
 
-	struct Scroll : Moveable<Scroll> {
-		Rect rect;
-		int  dx;
-		int  dy;
-	};
-
 	struct MoveCtrl : Moveable<MoveCtrl> {
 		Ptr<Ctrl>  ctrl;
 		Rect       from;
@@ -512,15 +504,14 @@ private:
 	};
 
 	friend struct UDropTarget;
-
+	
 	struct Top {
 		GUIPLATFORM_CTRL_TOP_DECLS
-		Vector<Scroll> scroll;
-		VectorMap<Ctrl *, MoveCtrl> move;
-		VectorMap<Ctrl *, MoveCtrl> scroll_move;
-		Ptr<Ctrl>      owner;
+		Ptr<Ctrl>         owner;
+		bool              virtual_dropshadow = false;
 	};
-
+	
+	static Vector<Ptr<Ctrl>> virtual_popups;
 
 	Frame        frame;
 	LogPos       pos;//8
@@ -581,7 +572,6 @@ private:
 	static  bool      ignorekeyup;
 	static  bool      mouseinview;
 	static  bool      mouseinframe;
-	static  bool      globalbackpaint;
 	static  bool      globalbackbuffer;
 	static  bool      painting;
 	static  int       EventLevel;
@@ -623,7 +613,6 @@ private:
 	void    UpdateRect(bool sync = true);
 	void    SetPos0(LogPos p, bool inframe);
 	void    SetWndRect(const Rect& r);
-	void    SyncMoves();
 
 	static  void  EndIgnore();
 	static  void  LRep();
@@ -648,8 +637,10 @@ private:
 public:
 	Image   DispatchMouse(int e, Point p, int zd = 0); // Public access for use by test code
 private:
+	Image   DispatchMouse2(int e, Point p, int zd);
 	Image   DispatchMouseEvent(int e, Point p, int zd = 0);
 	void    LogMouseEvent(const char *f, const Ctrl *ctrl, int event, Point p, int zdelta, dword keyflags);
+	Ctrl   *GetTopCaptureCtrl() const;
 
 	struct CallBox;
 	static void PerformCall(CallBox *cbox);
@@ -679,7 +670,7 @@ private:
 	static Point     dndpos;
 	static bool      dndframe;
 	static PasteClip dndclip;
-	
+
 	static int       last_mouse_action;
 
 	void    DnD(Point p, PasteClip& clip);
@@ -687,11 +678,7 @@ private:
 	static void DnDLeave();
 
 	void    SyncLayout(int force = 0);
-	bool    AddScroll(const Rect& sr, int dx, int dy);
 	Rect    GetClippedView();
-	void    ScrollRefresh(const Rect& r, int dx, int dy);
-	void    ScrollCtrl(Top *top, Ctrl *q, const Rect& r, Rect cr, int dx, int dy);
-	void    SyncScroll();
 	void    Refresh0(const Rect& area);
 	void    PaintCaret(SystemDraw& w);
 	void    CtrlPaint(SystemDraw& w, const Rect& clip);
@@ -728,6 +715,8 @@ private:
 	static void DoKillFocus(Ptr<Ctrl> pfocusCtrl, Ptr<Ctrl> nfocusCtrl);
 	static void DoSetFocus(Ptr<Ctrl> pfocusCtrl, Ptr<Ctrl> nfocusCtrl, bool activate);
 
+	Ctrl *GetOwnerWnd();
+
 	bool SetFocus0(bool activate);
 	void ActivateWnd();
 	void ClickActivateWnd();
@@ -735,8 +724,6 @@ private:
 	bool HasWndFocus() const;
 
 	void WndInvalidateRect(const Rect& r);
-
-	void WndScrollView(const Rect& r, int dx, int dy);
 
 	void SetWndForeground();
 	bool IsWndForeground() const;
@@ -750,6 +737,10 @@ private:
 
 	void WndFree();
 	void WndDestroy();
+
+	Rect GetWndWorkArea() const;
+
+	static Vector<Ctrl *> GetTopWndCtrls();
 
 	void SysEndLoop();
 
@@ -937,13 +928,6 @@ public:
 		MIDDLETRIPLE   = MIDDLE|TRIPLE
 	};
 
-	enum {
-		NOBACKPAINT,
-		FULLBACKPAINT,
-		TRANSPARENTBACKPAINT,
-		EXCLUDEPAINT,
-	};
-
 	static  Vector<Ctrl *> GetTopCtrls();
 	static  Vector<Ctrl *> GetTopWindows();
 	static  void   CloseTopCtrls();
@@ -1069,7 +1053,7 @@ public:
 	virtual String GetDesc() const;
 
 	virtual void   SetMinSize(Size sz) {}
-	
+
 	virtual void   Skin() {}
 
 	Event<>          WhenAction;
@@ -1211,12 +1195,6 @@ public:
 
 	static bool IsPainting()                             { return painting; }
 
-	void        ScrollView(const Rect& r, int dx, int dy);
-	void        ScrollView(int x, int y, int cx, int cy, int dx, int dy);
-	void        ScrollView(int dx, int dy);
-	void        ScrollView(const Rect& r, Size delta)    { ScrollView(r, delta.cx, delta.cy); }
-	void        ScrollView(Size delta)                   { ScrollView(delta.cx, delta.cy); }
-
 	void        Sync();
 	void        Sync(const Rect& r);
 
@@ -1304,11 +1282,6 @@ public:
 	void    UpdateAction();
 	void    UpdateActionRefresh();
 
-	Ctrl&   BackPaint(int bp = FULLBACKPAINT)  { backpaint = bp; return *this; }
-	Ctrl&   BackPaintHint()                    { return BackPaint(); }
-/*	Ctrl&   TransparentBackPaint()             { backpaint = TRANSPARENTBACKPAINT; return *this; }
-	Ctrl&   NoBackPaint()                      { return BackPaint(NOBACKPAINT); }
-	int     GetBackPaint() const               { return backpaint; }*/
 	Ctrl&   Transparent(bool bp = true)        { transparent = bp; return *this; }
 	Ctrl&   NoTransparent()                    { return Transparent(false); }
 	bool    IsTransparent() const              { return transparent; }
@@ -1367,7 +1340,6 @@ public:
 
 	bool   IsPopUp() const          { return popup; }
 
-
 	static void  EventLoop(Ctrl *loopctrl = NULL);
 	static int   GetLoopLevel()     { return LoopLevel; }
 	static Ctrl *GetLoopCtrl()      { return LoopCtrl; }
@@ -1412,7 +1384,7 @@ public:
 
 	static void SetUHDEnabled(bool set = true);
 	static bool IsUHDEnabled();
-	
+
 	static void SetDarkThemeEnabled(bool set = true);
 	static bool IsDarkThemeEnabled();
 
@@ -1428,9 +1400,11 @@ public:
 	static Rect   GetVirtualScreenArea();
 	static Rect   GetPrimaryWorkArea();
 	static Rect   GetPrimaryScreenArea();
-	static void   GetWorkArea(Array<Rect>& rc);
+	static void   GetWorkAreas(Array<Rect>& rc);
 	static Rect   GetWorkArea(Point pt);
+	static Rect   GetWorkArea(const Ctrl *owner, Point pt);
 	static Rect   GetMouseWorkArea()                     { return GetWorkArea(GetMousePos()); }
+	static Rect   GetMouseWorkArea(Ctrl *owner)          { return GetWorkArea(owner, GetMousePos()); }
 	static int    GetKbdDelay();
 	static int    GetKbdSpeed();
 	static bool   IsAlphaSupported();
@@ -1439,8 +1413,6 @@ public:
 	static void   SetAppName(const String& appname);
 	static bool   IsCompositedGui();
 
-	static void   GlobalBackPaint(bool b = true);
-	static void   GlobalBackPaintHint();
 	static void   GlobalBackBuffer(bool b = true);
 
 	static void   ReSkin();
@@ -1477,6 +1449,19 @@ public:
 	Ctrl();
 	virtual ~Ctrl();
 
+#ifndef flagDEVELOP_VIRTUALPOPUPS // .Makes virtual popup interface public
+private:
+#endif
+	Image VirtualPopUpDropShadow();
+	Rect GetVirtualPopUpOverRect();
+	void RefreshVirtualPopUp();
+	void VirtualPopUp(Ctrl *owner, bool activate, bool dropshadow = false);
+	bool IsVirtualPopUp() const;
+	Rect GetVirtualPopUpRect(const Rect& vp_frame_rect) const;
+	Rect GetVirtualPopUpRect() const;
+	void CloseVirtualPopUp();
+	static bool use_virtual_popups;
+
 private: // support for for(Ctrl& q : *this)
 	class CtrlConstIterator {
 	protected:
@@ -1501,6 +1486,17 @@ public:
 	CtrlIterator begin()            { CtrlIterator c; c.q = GetFirstChild(); return c; }
 	CtrlConstIterator end() const   { CtrlConstIterator c; c.q = NULL; return c; }
 	CtrlIterator end()              { CtrlIterator c; c.q = NULL; return c; }
+
+#ifdef DEPRECATED
+	Ctrl&   BackPaint(int bp = 0)   { return *this; }
+	Ctrl&   BackPaintHint()         { return BackPaint(); }
+
+	void    ScrollView(const Rect& r, int dx, int dy);
+	void    ScrollView(int x, int y, int cx, int cy, int dx, int dy);
+	void    ScrollView(int dx, int dy);
+	void    ScrollView(const Rect& r, Size delta)    { ScrollView(r, delta.cx, delta.cy); }
+	void    ScrollView(Size delta)                   { ScrollView(delta.cx, delta.cy); }
+#endif
 };
 
 inline Size GetScreenSize()  { return Ctrl::GetVirtualScreenArea().GetSize(); } // Deprecated
