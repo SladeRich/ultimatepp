@@ -560,7 +560,7 @@ void Ctrl::WndDestroy()
 	FocusSync();
 }
 
-Vector<Ctrl *> Ctrl::GetTopCtrls()
+Vector<Ctrl *> Ctrl::GetTopWndCtrls()
 {
 	GuiLock __;
 	Vector<Ctrl *> v;
@@ -652,7 +652,7 @@ bool Ctrl::IsCompositedGui()
 	return b;
 }
 
-Ctrl *Ctrl::GetOwner()
+Ctrl *Ctrl::GetOwnerWnd()
 {
 	GuiLock __;
 	if(!IsOpen()) return NULL;
