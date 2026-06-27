@@ -705,7 +705,7 @@ bool Pdb::RunToException()
 					DR_LOG("Create main thread: " << pid);
 					LLOG("Create main thread: " << pid);
 				}
-#ifdef CPU_ARM // Fixme - hack as this stops it working on Linux Mint
+#if 0 // Fixme - hack when GUI runs it fires off a number of threads which causes the main thread to lock up due to interaction when ptrace is being used
 				ptrace(PTRACE_SETOPTIONS, mainThreadId, NULL, PTRACE_O_TRACECLONE|PTRACE_O_TRACEFORK); // Enable multi threading debugging
 #endif
 			}
@@ -746,6 +746,7 @@ bool Pdb::RunToException()
 								}
 								debug_threadid = procId;
 								halt = false;
+								LLOG("Clone continuing "<<procId);
 								ptrace(PTRACE_CONT, procId, NULL, NULL);
 							}
 							else if (statusBits == (SIGTRAP | (PTRACE_EVENT_FORK << 8))) {
@@ -759,6 +760,7 @@ bool Pdb::RunToException()
 								}
 								debug_threadid = forkId;
 								halt = false;
+								LLOG("Fork continuing "<<forkId);
 								ptrace(PTRACE_CONT, forkId, NULL, NULL);
 							} else {
 								debug_threadid = pid;
@@ -858,8 +860,8 @@ bool Pdb::RunToException()
 				}
 			}
 			else if(WIFSIGNALED(status)) {
-				DR_LOG("Debugee child killed with signal "<<WTERMSIG(status)<<" at 0x"<<Hex(ip));
-				LLOG("Debugee child killed with signal "<<WTERMSIG(status)<<" at 0x"<<Hex(ip));
+				DR_LOG("Debugee "<<pid<<" killed with signal "<<WTERMSIG(status)<<" at 0x"<<Hex(ip));
+				LLOG("Debugee "<<pid<<" killed with signal "<<WTERMSIG(status)<<" at 0x"<<Hex(ip));
 				if(locked)
 					Unlock();
 				Stop();
@@ -867,12 +869,13 @@ bool Pdb::RunToException()
 				return false; // It has died
 			}
 			else if(WIFCONTINUED(status)) {
-				LLOG("Continued");
+				LLOG("Continued "<<pid);
 			}
 			LLOG("<<< Debugee continuing "<<pid);
 			ptrace(PTRACE_CONT, pid, NULL, NULL);
 			running = true;
 		}
+
 #endif
 		
 		if(ts.Elapsed() > 200) {
