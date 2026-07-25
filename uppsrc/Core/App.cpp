@@ -23,6 +23,10 @@
 #undef CY
 #endif
 
+#ifdef PLATFORM_POSIX
+#include <pwd.h>
+#endif
+
 namespace Upp {
 
 static StaticMutex sHlock;
@@ -719,7 +723,15 @@ String GetUserName()
 	::GetUserNameW(temp, &w);
 	return temp;
 #else
-	return Nvl(GetEnv("USER"), "root");
+    size_t bsz = 1024;
+    Buffer<char> buf(bsz);
+    struct passwd pwd;
+    struct passwd *result = NULL;
+    int rc;
+    while((rc = getpwuid_r(getuid(), &pwd, buf, bsz, &result)) == ERANGE)
+        buf.Alloc(bsz *= 2);
+
+	return rc == 0 && result ? pwd.pw_name : "";
 #endif
 }
 
