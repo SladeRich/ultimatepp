@@ -552,7 +552,7 @@ String RichCellPos::ToString() const
 {
 	String s;
 	s << "pos: " << pos << ", textlen: " << textlen << ", size: " << tabsize << ", tabpos: " << tabpos
-	  << ", tablen: " << tablen << ", cellpos: " << cellpos << ", celllen: " << celllen << ", level: " << level;
+	  << ", tablen: " << tablen << ", cellpos: " << cellpos;
 	return s;
 }
 
