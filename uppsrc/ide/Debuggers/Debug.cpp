@@ -428,7 +428,7 @@ bool Pdb::AddThread(dword dwThreadId, Thread::Hnd  hThread)
 	Context c = ReadContext(hThread);
 	f.sp = c.GetSP(win64);
 	f.hThread = hThread;
-	LLOG("Adding thread " << dwThreadId << ", Thread SP: 0x" << Hex(f.sp) << ", handle: 0x" << FormatIntHex((dword)(uintptr_t)(hThread)));
+	LLOG("Adding thread " << dwThreadId << ", Thread SP: 0x" << Hex(f.sp) << ", handle: 0x" << FormatIntHex((dword)(uintptr_t)(hThread)) << " of " << threads.GetCount());
 	return true;
 }
 
@@ -705,7 +705,7 @@ bool Pdb::RunToException()
 					DR_LOG("Create main thread: " << pid);
 					LLOG("Create main thread: " << pid);
 				}
-#if 0 // Fixme - hack when GUI runs it fires off a number of threads which causes the main thread to lock up due to interaction when ptrace is being used
+#if 0 // Fixme - when GUI runs gtk_im_multicontext_new() is locking up?
 				ptrace(PTRACE_SETOPTIONS, mainThreadId, NULL, PTRACE_O_TRACECLONE|PTRACE_O_TRACEFORK); // Enable multi threading debugging
 #endif
 			}

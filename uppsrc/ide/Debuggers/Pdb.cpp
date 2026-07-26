@@ -229,7 +229,7 @@ bool Pdb::Create(Host& local, const String& exefile, const String& cmdline, bool
 		Exclamation("Error creating process&[* " + DeQtf(exefile) + "]&" + "Dwarf Elf error: " + DeQtf(dwarf_errmsg(-1)));
 		return false;
 	}
-	///LLOG(DebugDump(true));
+	///DLOG(DebugDump(true));
 	breakResume = false;
 	// Run debugee using fork
 	mainThreadId = fork();
@@ -645,9 +645,23 @@ void Pdb::DebugDumpKid(Dwarf_Die *die, unsigned depth, unsigned *cnt, unsigned *
 					if (dwarf_attr(die, DW_AT_data_member_location, &locAttr)) {
 						dwarf_formudata(&locAttr, &locIdx);
 					}
+					Dwarf_Attribute bitSizeAttr;
+					Dwarf_Word bitSize = 0;
+					if (dwarf_attr(die, DW_AT_bit_size, &bitSizeAttr)) {
+						dwarf_formudata(&bitSizeAttr, &bitSize);
+					}
+					Dwarf_Attribute bitOffsetAttr;
+					Dwarf_Word bitOffset = 0;
+					if (dwarf_attr(die, DW_AT_data_bit_offset, &bitOffsetAttr)) {
+						dwarf_formudata(&bitOffsetAttr, &bitOffset);
+					}
 					s << offset<<push<<" "<<tagName<<" #"<<tag;
 					s << " name:'"<<(name ?: "")<<"'";
 					s << " locIdx:"<<locIdx;
+					if (bitSize) {
+						s << " bitSize:"<<bitSize;
+						s << " bitOffset:"<<bitOffset;
+					}
 					s << " line:"<<line<<" file:" << (file ?:"");
 					(*disp)++;
 				}

@@ -1230,32 +1230,74 @@ const Pdb::Type& Pdb::GetType(int ti)
 				switch(tag) {
 					//LLOG("\t Tag:#" << tag<<" Ref:"<<dwarf_dieoffset(&kid)<<" name:"<<(name ?: ""));
 					case DW_TAG_member: {
-							Dwarf_Attribute locAttr;
 							Dwarf_Word locOff = 0;
+							Dwarf_Attribute locAttr;
 							if (dwarf_attr(&kid, DW_AT_data_member_location, &locAttr)) {
 								dwarf_formudata(&locAttr, &locOff);
+							}
+							Dwarf_Word bitSize = 0;
+							Dwarf_Attribute bitSizeAttr;
+							if (dwarf_attr(&kid, DW_AT_bit_size, &bitSizeAttr)) {
+								dwarf_formudata(&bitSizeAttr, &bitSize);
+							}
+							Dwarf_Word bitOffset = 0;
+							if (bitSize != 0) {
+								Dwarf_Attribute bitOffsetAttr;
+								if (dwarf_attr(&kid, DW_AT_data_bit_offset, &bitOffsetAttr)) {
+									dwarf_formudata(&bitOffsetAttr, &bitOffset);
+								}
+								#ifdef CPU_64
+								locOff += bitOffset / 8;
+								bitOffset %= 8;
+								#else
+								locOff += bitOffset / 4;
+								bitOffset %= 4;
+								#endif
 							}
 							Pdb::Val val;
 							if (GetTypeVal(&val, kid)) {
 								val.address = locOff;
 								val.rvalue = false;
+								val.bitcnt = bitSize;
+								val.bitpos = bitOffset;
 								if (name && *name) {
 									t.member.Add(name,val);
-									LLOG("\t To '"<<t.name<<"' added new type member "<<t.member.GetCount()<<" '"<<name<<"' val:"<<val<<" ival:"<<val.ival<<" 0x:"<<Hex(val.ival));
+									LLOG("\t To '"<<t.name<<"' added new type member "<<t.member.GetCount()<<" '"<<name<<"' val:"<<val<<" ival:"<<val.ival<<" 0x"<<Hex(val.ival));
 								}
 							}
 						}
 						break;
 					case DW_TAG_inheritance: {
-							Dwarf_Attribute locAttr;
 							Dwarf_Word locOff = 0;
+							Dwarf_Attribute locAttr;
 							if (dwarf_attr(&kid, DW_AT_data_member_location, &locAttr)) {
 								dwarf_formudata(&locAttr, &locOff);
+							}
+							Dwarf_Word bitSize = 0;
+							Dwarf_Attribute bitSizeAttr;
+							if (dwarf_attr(&kid, DW_AT_bit_size, &bitSizeAttr)) {
+								dwarf_formudata(&bitSizeAttr, &bitSize);
+							}
+							Dwarf_Word bitOffset = 0;
+							if (bitSize != 0) {
+								Dwarf_Attribute bitOffsetAttr;
+								if (dwarf_attr(&kid, DW_AT_data_bit_offset, &bitOffsetAttr)) {
+									dwarf_formudata(&bitOffsetAttr, &bitOffset);
+								}
+								#ifdef CPU_64
+								locOff += bitOffset / 8;
+								bitOffset %= 8;
+								#else
+								locOff += bitOffset / 4;
+								bitOffset %= 4;
+								#endif
 							}
 							Pdb::Val val;
 							if (GetTypeVal(&val, kid)) {
 								val.address = locOff;
 								val.rvalue = false;
+								val.bitcnt = bitSize;
+								val.bitpos = bitOffset;
 								if (!(name && *name)) {
 									Dwarf_Attribute typeAttr;
 									if (dwarf_attr(&kid, DW_AT_type, &typeAttr)) {
@@ -1267,7 +1309,7 @@ const Pdb::Type& Pdb::GetType(int ti)
 								}
 								if (name && *name) {
 									t.member.Add(name,val);
-									LLOG("\t To '"<<t.name<<"' added new inheritance type member "<<t.member.GetCount()<<" '"<<name<<"' val:"<<val<<" ival:"<<val.ival<<" 0x:"<<Hex(val.ival));
+									LLOG("\t To '"<<t.name<<"' added new inheritance type member "<<t.member.GetCount()<<" '"<<name<<"' val:"<<val<<" ival:"<<val.ival<<" 0x"<<Hex(val.ival));
 								}
 							}
 						}
