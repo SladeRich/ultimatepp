@@ -115,9 +115,9 @@ void Ide::RunArgs() {
 	}
 }
 
-void Ide::CreateHostRunDir(Host& h)
+void Ide::CreateHostRunDir(Host& h, bool exit_pause)
 {
-	CreateHost(h, darkmode, disable_uhd, scale);
+	CreateHost(h, darkmode, disable_uhd, scale, exit_pause);
 	if(IsNull(rundir))
 		h.ChDir(GetFileFolder(target));
 	else
@@ -356,7 +356,7 @@ void Ide::BuildAndDebug(bool runto)
 	if(designer && !editfile_isfolder)
 		EditAsText();
 	Host host;
-	CreateHostRunDir(host);
+	CreateHostRunDir(host, true);
 	host.ChDir(Nvl(rundir, GetFileFolder(target)));
 	editor.Disable();
 
