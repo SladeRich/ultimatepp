@@ -596,7 +596,7 @@ struct Pdb : Debugger, ParentCtrl {
 
 #ifdef PLATFORM_WIN32
 #else
-	int                   GetValType(Dwarf_Die& die, Dwarf_Die *valDie = 0);
+	int                   GetValType(Dwarf_Die& die, Dwarf_Die *valDie = 0, Dwarf_Word *sz = 0);
 	bool                  GetTypeVal(Pdb::Val* val, Dwarf_Die kid);
 	bool                  GetNestedLocals(VectorMap<String, Pdb::Val>& param, VectorMap<String, Pdb::Val>& local, Dwarf_Die *die, Dwarf_Addr addr);
 #endif
