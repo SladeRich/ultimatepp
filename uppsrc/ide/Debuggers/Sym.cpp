@@ -593,6 +593,19 @@ int Pdb::GetValType(Dwarf_Die& die, Dwarf_Die *valDie, Dwarf_Word *sz) {
 			}
 		}
 	}
+	else if (tag==DW_TAG_typedef) {
+		// Get the baseType
+		Dwarf_Attribute typeAttr;
+		if (dwarf_attr(&die, DW_AT_type, &typeAttr)) {
+			Dwarf_Die subTypeDie;
+			if (dwarf_formref_die(&typeAttr, &subTypeDie)) {
+				if (valDie) {
+					*valDie = subTypeDie;
+				}
+				valType = GetValType(subTypeDie, valDie, sz); // Const type - need to go deeper
+			}
+		}
+	}
 	else {
 		const char *typeName = dwarf_diename(&die);
 		LLOG("\t\t\t typeName:"<<(typeName?:""));
