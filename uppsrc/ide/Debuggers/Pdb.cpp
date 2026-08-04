@@ -601,7 +601,7 @@ void Pdb::DebugDumpKid(Dwarf_Die *die, unsigned depth, unsigned *cnt, unsigned *
 					}
 					s << offset<<push<<" "<<tagName<<" #"<<tag;
 					s << " name:'"<<(name ?: "")<<"'";
-					s << " ref:"<<typeOff;
+					s << " type:"<<typeOff;
 					s << " line:"<<line<<" file:" << (file ?:"");
 					(*disp)++;
 				}
@@ -793,8 +793,19 @@ void Pdb::DebugDumpKid(Dwarf_Die *die, unsigned depth, unsigned *cnt, unsigned *
 			case DW_TAG_base_type:
 				if (verbose || name) {
 					const char *tagName = "DW_TAG_base_type";
+					Dwarf_Word typeSz = 0;
+					dwarf_aggregate_size(die, &typeSz);
+					Dwarf_Word encoding = 0;
+					Dwarf_Attribute encodingAttr;
+					if (dwarf_attr(die, DW_AT_encoding, &encodingAttr)) {
+						dwarf_formudata(&encodingAttr, &encoding); // DW_ATE_signed, DW_ATE_unsigned, DW_ATE_float, DW_ATE_boolean, DW_ATE_void etc.
+					}
 					s << offset<<push<<" "<<tagName<<" #"<<tag;
 					s << " name:'"<<(name ?: "")<<"'";
+					if (typeSz)
+						s << " typeSize:"<<typeSz;
+					if (typeSz)
+						s << " encoding:"<<encoding;
 					(*disp)++;
 				}
 				break;

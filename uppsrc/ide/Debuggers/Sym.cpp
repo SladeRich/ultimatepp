@@ -525,7 +525,7 @@ int CALLBACK Pdb::EnumLocals(PSYMBOL_INFO pSym, unsigned long SymbolSize, void* 
 #ifdef PLATFORM_WIN32
 #else
 
-int Pdb::GetValType(Dwarf_Die& die, Dwarf_Die *valDie) {
+int Pdb::GetValType(Dwarf_Die& die, Dwarf_Die *valDie, Dwarf_Word *sz) {
 	int valType = UNKNOWN; // enum { UNKNOWN = -99, BOOL1, SINT1, UINT1, SINT2, UINT2, SINT4, UINT4, SINT8, UINT8, FLT, DBL, PFUNC };
 	if (valDie) {
 		*valDie = die;
@@ -576,6 +576,9 @@ int Pdb::GetValType(Dwarf_Die& die, Dwarf_Die *valDie) {
 					break;
 			}
 		}
+		if (sz) {
+			*sz = typeSz;
+		}
 	}
 	else if (tag==DW_TAG_const_type) {
 		// Get the baseType
@@ -586,7 +589,7 @@ int Pdb::GetValType(Dwarf_Die& die, Dwarf_Die *valDie) {
 				if (valDie) {
 					*valDie = subTypeDie;
 				}
-				valType = GetValType(subTypeDie); // Const type - need to go deeper
+				valType = GetValType(subTypeDie, valDie, sz); // Const type - need to go deeper
 			}
 		}
 	}
@@ -645,7 +648,7 @@ bool Pdb::GetTypeVal(Pdb::Val* val, Dwarf_Die die) {
 								Dwarf_Die subTypeDie;
 								if (dwarf_formref_die(&typeAttr, &subTypeDie)) {
 									Dwarf_Die valDie;
-									valType = GetValType(subTypeDie, &valDie);
+									valType = GetValType(subTypeDie, &valDie, &typeSz);
 									if (valType == UNKNOWN) {
 										// Must be a struct type
 										valType = GetTypeIndex(0,dwarf_dieoffset(&subTypeDie)); // Get custom val type
@@ -702,7 +705,7 @@ bool Pdb::GetTypeVal(Pdb::Val* val, Dwarf_Die die) {
 								Dwarf_Die subTypeDie;
 								if (dwarf_formref_die(&typeAttr, &subTypeDie)) {
 									Dwarf_Die valDie;
-									valType = GetValType(subTypeDie, &valDie);
+									valType = GetValType(subTypeDie, &valDie, &typeSz);
 									if (valType == UNKNOWN) {
 										// Must be a struct type
 										valType = GetTypeIndex(0,dwarf_dieoffset(&subTypeDie)); // Get custom val type
@@ -724,7 +727,7 @@ bool Pdb::GetTypeVal(Pdb::Val* val, Dwarf_Die die) {
 								Dwarf_Die subTypeDie;
 								if (dwarf_formref_die(&typeAttr, &subTypeDie)) {
 									Dwarf_Die valDie;
-									valType = GetValType(subTypeDie, &valDie);
+									valType = GetValType(subTypeDie, &valDie, &typeSz);
 									if (valType == UNKNOWN) {
 										// Must be a struct type
 										valType = GetTypeIndex(0,dwarf_dieoffset(&subTypeDie)); // Get custom val type
@@ -736,7 +739,7 @@ bool Pdb::GetTypeVal(Pdb::Val* val, Dwarf_Die die) {
 							}
 						}
 						else if (typeTag==DW_TAG_base_type) {
-							valType = GetValType(typeDie);
+							valType = GetValType(typeDie, 0, &typeSz);
 						}
 					}
 				}
@@ -894,6 +897,9 @@ bool Pdb::GetTypeVal(Pdb::Val* val, Dwarf_Die die) {
 						}
 						if (ok) {
 							uint64 v = ptrace(PTRACE_PEEKDATA, debug_threadid, adr, 0);
+							if (typeSz!=0 && typeSz<8) {
+								v &= 0xffffffff>>((8-typeSz)*8);
+							}
 							LLOG("\t\t\t address: 0x" << Hex(adr) << " value:" << v << " 0x" << Hex(v));
 							if (array | ref | udt) {
 								val->address = adr;
