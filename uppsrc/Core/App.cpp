@@ -621,6 +621,13 @@ void AppExit__()
 #ifdef PLATFORM_POSIX
 	MemoryIgnoreLeaksBegin(); // Qt leaks on app exit...
 #endif
+
+#ifndef flagGUI
+	if(GetEnv("UPP_EXIT_PAUSE__") == "1") { // this is an ugly way to prevent close of console on F5 (debug)
+		Cout() << "<--- Finished, press [ENTER] to close the window --->\n";
+		ReadStdIn();
+	}
+#endif
 }
 
 #ifdef flagTURTLE // Turtle web backend
@@ -723,13 +730,13 @@ String GetUserName()
 	::GetUserNameW(temp, &w);
 	return temp;
 #else
-    size_t bsz = 1024;
-    Buffer<char> buf(bsz);
-    struct passwd pwd;
-    struct passwd *result = NULL;
-    int rc;
-    while((rc = getpwuid_r(getuid(), &pwd, buf, bsz, &result)) == ERANGE)
-        buf.Alloc(bsz *= 2);
+	size_t bsz = 1024;
+	Buffer<char> buf(bsz);
+	struct passwd pwd;
+	struct passwd *result = NULL;
+	int rc;
+	while((rc = getpwuid_r(getuid(), &pwd, buf, bsz, &result)) == ERANGE)
+		buf.Alloc(bsz *= 2);
 
 	return rc == 0 && result ? pwd.pw_name : "";
 #endif
