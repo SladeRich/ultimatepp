@@ -368,6 +368,7 @@ String SearchEnginesFile();
 int ApplyChanges(LineEdit& editor, const String& new_content);
 
 struct RepoDiff;
+class  UrepoConsole;
 
 struct Ide : public TopWindow, public WorkspaceWork, public IdeContext, public MakeBuild {
 public:
@@ -954,6 +955,8 @@ public:
 		void  SyncRepoDir(const String& working);
 		void  SyncRepo();
 
+		void  ClangTidyPackage(Bar& menu) override;
+
 	void      BuildMenu(Bar& menu);
 		void  BuildPackageMenu(Bar& menu) override;
 
@@ -1311,8 +1314,14 @@ public:
 	void TriggerIndexer0();
 	void TriggerIndexer();
 
+#ifdef PLATFORM_WIN32
 	String GetVcpkgTriplet();
 	void   VcpkgInstallMissing(Function<int(const String&, const String& chdir)> sys);
+	bool   IsVcpkgAvailable(UrepoConsole& console);
+	bool   IsVcpkgAvailable();
+#endif
+
+	void   CreateSBOM();
 
 	typedef   Ide CLASSNAME;
 
