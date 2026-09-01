@@ -747,16 +747,11 @@ void Ide::BuildFileMenu(Bar& menu)
 			.Help("Compile the file into assembler code");
 }
 
-void Ide::BuildPackageMenu(Bar& menu)
+void Ide::ClangTidyPackage(Bar& menu)
 {
-	int pi = GetPackageIndex();
-	bool b = !IdeIsDebugLock() && idestate == EDITING && pi >= 0 && pi < IdeWorkspace().GetCount();
-	menu.Add(b, "Build package", THISBACK(PackageBuild))
-		.Help("Build current package");
-	menu.Add(b, "Clean package", THISBACK(PackageClean))
-		.Help("Remove all intermediate files of the current package");
 	if(HasClangTidy()) {
-		menu.Separator();
+		int pi = GetPackageIndex();
+		bool b = !IdeIsDebugLock() && idestate == EDITING && pi >= 0 && pi < IdeWorkspace().GetCount();
 		menu.Add(b, "Check package with Clang-Tidy", IdeImg::ClangTidy(), [=] {
 			const Package& p = IdeWorkspace().GetPackage(pi);
 			String pp = PackageDirectory(IdeWorkspace()[pi]);
@@ -768,6 +763,16 @@ void Ide::BuildPackageMenu(Bar& menu)
 			});
 		});
 	}
+}
+
+void Ide::BuildPackageMenu(Bar& menu)
+{
+	int pi = GetPackageIndex();
+	bool b = !IdeIsDebugLock() && idestate == EDITING && pi >= 0 && pi < IdeWorkspace().GetCount();
+	menu.Add(b, "Build package", THISBACK(PackageBuild))
+		.Help("Build current package");
+	menu.Add(b, "Clean package", THISBACK(PackageClean))
+		.Help("Remove all intermediate files of the current package");
 	menu.MenuSeparator();
 }
 
@@ -828,6 +833,7 @@ void Ide::BuildMenu(Bar& menu)
 	menu.Add(!IsNull(target), AK_COPYOUTDIR, [=] { WriteClipboardText(GetFileFolder(target)); });
 	menu.Add(!IsNull(target), AK_COPYTARGET, [=] { WriteClipboardText(target); });
 	menu.Add(!IsNull(target), AK_OUTDIRTERMINAL, [=] { LaunchTerminal(GetFileFolder(target)); });
+	menu.Add("Create SBOM..", [this] { CreateSBOM(); });
 }
 
 void Ide::DebugMenu(Bar& menu)
