@@ -247,3 +247,42 @@ Vector<String> Workspace::GetAllAccepts(int pk) const
 	}
 	return accepts.PickKeys();
 }
+
+Vector<String> RequiredExternalDependencies(const String& manager)
+{
+	Vector<String> required;
+	const Workspace& wspc = GetIdeWorkspace();
+
+	Vector<String> keys;
+	keys << manager;
+#ifdef PLATFORM_WIN32
+	keys << "WIN32";
+#endif
+#ifdef PLATFORM_POSIX
+	keys << "POSIX";
+#endif
+#ifdef PLATFORM_LINUX
+	keys << "LINUX";
+#endif
+#ifdef PLATFORM_MACOS
+	keys << "MACOS";
+#endif
+#ifdef PLATFORM_BSD
+	keys << "BSD";
+#endif
+
+	for(int i = 0; i < wspc.GetCount(); i++) {
+		const Package& pkg = wspc.GetPackage(i);
+		int maxlen = -1; // find the most complicated entry
+		String ed;
+		for(const OptItem& m : pkg.external_dependency) {
+			if(MatchWhen(m.when, keys) && m.when.GetCount() > maxlen) {
+				ed = m.text;
+				maxlen = m.when.GetCount();
+			}
+		}
+		required.Append(Split(ed, ' '));
+	}
+	Sort(required);
+	return required;
+}
