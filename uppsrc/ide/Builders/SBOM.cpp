@@ -2,6 +2,7 @@
 
 struct Component {
     String name;
+    String type = "library";
     String bom_ref;
     String supplier;
 
@@ -17,9 +18,9 @@ struct Component {
     String originUrl;
 };
 
-String Format8601(Time t)
+String Format8601Z(Time t)
 {
-	return Format("%04.4d%02.2d%02.2d`T%02.2d`:%02.2d`:%02.2d",
+	return Format("%04.4d%02.2d%02.2d`T%02.2d`:%02.2d`:%02.2d`Z",
 		          t.year, t.month, t.day, t.hour, t.minute, t.second);
 }
 
@@ -29,8 +30,6 @@ String MakeBuild::CreateSBOM(const String& triplet)
 	JsonArray dependencies;
 
 #ifdef PLATFORM_WIN32
-	Vector<String> required = RequiredExternalDependencies("VCPKG");
-	DUMP(required);
 	auto ReadComponent = [&](Value p) {
 		Component& m = cs.Add();
 		m.name = p["name"];
@@ -44,6 +43,61 @@ String MakeBuild::CreateSBOM(const String& triplet)
 				m.purl = r["referenceLocator"];
 	};
 
+	Index<String> required;
+
+	const Workspace& wspc = GetIdeWorkspace();
+	for(int i = 0; i < wspc.GetCount(); i++) {
+		const Package& pk = wspc.GetPackage(i);
+		String n = wspc[i];
+		for(String fn : pk.file) {
+			String file = SourcePath(n, fn);
+			if(ToLower(GetFileName(file)) == "sbom.json") {
+				Value sbom = ParseJSON(LoadFile(file));
+				if(sbom.Is<ValueArray>()) {
+					for(Value p : sbom)
+						ReadComponent(p);
+				}
+				else
+					ReadComponent(sbom);
+			}
+		}
+
+		Component& m = cs.Add();
+		if(i == 0)
+			m.type = "application";
+		auto PkgName = [=](const String& s) {
+			 return "u++pkg:" + Filter(s, [](int c) { return c == '\\' ? '/' : c; });
+		};
+		m.bom_ref = m.name = PkgName(n);
+	
+		String git = GetExeDirFile("bin/mingit/cmd/git") + " -C " + PackageDirectory(n) + " ";
+		
+		String origin = TrimBoth(Sys(git + "config --get remote.origin.url"));
+		if(origin.GetCount()) {
+			m.originUrl = "git+" + origin;
+			origin.TrimEnd(".git");
+			m.homepage = origin;
+		}
+
+		String ts, hash;
+		if(SplitTo(TrimBoth(Sys(git + "log -1 --date=unix --format=\"%h %cd\"")), " ", hash, ts)) {
+			m.version = Format8601Z(Atoi64(ts) + Time(1970, 1, 1)) + "#" + hash;
+			if(m.originUrl.GetCount())
+				m.sourceDistributions << m.originUrl + "@" + hash;
+		}
+		m.licenses << "BSD-2-Clause"; // todo
+		
+		JsonArray deps;
+		for(const OptItem& u : pk.uses)
+			deps << PkgName(u.text);
+
+		for(String s : RequiredExternalDependencies(pk, "VCPKG")) {
+			deps << s;
+			required.FindAdd(s);
+		}
+		dependencies << Json("ref", m.name)("dependsOn", deps);
+	}
+	
 	for(int i = 0; i < required.GetCount(); i++) {
 		String name = required[i];
 		Value spdx = ParseJSON(LoadFile(
@@ -54,13 +108,13 @@ String MakeBuild::CreateSBOM(const String& triplet)
 			if(p["SPDXID"] == "SPDXRef-port") {
 				ReadComponent(p);
 				Component& component = cs.Top();
+				component.bom_ref = component.name;
 				JsonArray deps;
 				for(String depends : Split(Split(Split(Sys(VcpkgExe() + " depend-info " + component.name),
 				                                       CharFilterCrLf).Top(), ':').Top(), ',')) {
 					depends = TrimBoth(depends);
 					if(!depends.StartsWith("vcpkg-")) {
-						if(FindIndex(required, depends) < 0)
-							required << depends;
+						required.FindAdd(depends);
 						deps << depends;
 					}
 				}
@@ -78,36 +132,10 @@ String MakeBuild::CreateSBOM(const String& triplet)
 			}
 		}
 	}
-	
-	const Workspace& wspc = GetIdeWorkspace();
-	for(int i = 0; i < wspc.GetCount(); i++) {
-		const Package& pk = wspc.GetPackage(i);
-		String n = wspc[i];
-		for(int i = 0; i < pk.file.GetCount(); i++) {
-			String file = SourcePath(n, pk.file[i]);
-			if(ToLower(GetFileName(file)) == "sbom.json") {
-				Value sbom = ParseJSON(LoadFile(file));
-				if(sbom.Is<ValueArray>()) {
-					for(Value p : sbom)
-						ReadComponent(p);
-				}
-				else
-					ReadComponent(sbom);
-			}
-		}
-	}
 #endif
 
-	Json sbom;
-	sbom("bomFormat", "CycloneDX")
-	    ("specVersion", "1.4")
-	    ("version", 1)
-	    ("serialNumber", "urn:uuid:" + Uuid::Create().ToString())
-	    ("metadata", Upp::Json("timestamp", Format8601(GetSysTime()))
-	                          ("tools", JsonArray() << Json("vendor", "Ultimate++")
-	                                                       ("name", "TheIDE"))); // todo: umk when run from umk?
-
 	JsonArray components;
+	Json main_component;
 	for(const Component& c : cs) {
 		JsonArray licenses;
 		for(const String& s : c.licenses)
@@ -128,7 +156,7 @@ String MakeBuild::CreateSBOM(const String& triplet)
 				               ("url", url);
 
 		Json component;
-		component("type", "library")
+		component("type", c.type)
 		         ("name", c.name)
 		         ("bom-ref", c.bom_ref)
 		         ("version", c.version);
@@ -140,9 +168,22 @@ String MakeBuild::CreateSBOM(const String& triplet)
 			component("licenses", licenses);
 		if(extRefs)
 			component("externalReferences", extRefs);
-
-		components << component;
+		
+		if(!main_component)
+			main_component = component;
+		else
+			components << component;
 	}
+
+	Json sbom;
+	sbom("bomFormat", "CycloneDX")
+	    ("specVersion", "1.4")
+	    ("version", 1)
+	    ("serialNumber", "urn:uuid:" + Uuid::CreateV4().ToString())
+	    ("metadata", Upp::Json("timestamp", Format8601Z(GetUtcTime()))
+	                          ("tools", JsonArray() << Json("vendor", "U++")
+	                                                       ("name", "TheIDE")) // todo: umk when run from umk?
+	                          ("component", main_component));
 	
 	if(components)
 		sbom("components", components);
