@@ -449,6 +449,7 @@ public:
 	bool                     noblitz;
 	bool                     nowarnings;
 	String                   description;
+	String                   license_id;
 	Vector<String>           accepts;
 	Array<OptItem>           flag;
 	Array<OptItem>           uses;
@@ -707,6 +708,16 @@ String CleanupId(const char *s);
 String CleanupPretty(const String& signature);
 
 Vector<ItemTextPart> ParsePretty(const String& name, const String& signature, int *fn_info = NULL);
+
+struct ExternalDependencyInfo : Moveable<ExternalDependencyInfo> {
+	String name;
+	String license;
+};
+
+ExternalDependencyInfo GetExternalDependencyInfo(const String& txt);
+
+Vector<ExternalDependencyInfo> RequiredExternalDependenciesInfo(const Package& pkg, const String& manager);
+Vector<ExternalDependencyInfo> RequiredExternalDependenciesInfo(const String& manager);
 
 Vector<String>         RequiredExternalDependencies(const Package& pkg, const String& manager);
 Vector<String>         RequiredExternalDependencies(const String& manager);
