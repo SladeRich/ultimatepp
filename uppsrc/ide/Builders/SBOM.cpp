@@ -4,7 +4,6 @@ struct Component {
     String name;
     String type = "library";
     String bom_ref;
-    String supplier;
 
     String version;                      // For shipped components (regardless of linking)
 	String purl;                         // PURL from package manager, if available
@@ -20,7 +19,7 @@ struct Component {
 
 String Format8601Z(Time t)
 {
-	return Format("%04.4d%02.2d%02.2d`T%02.2d`:%02.2d`:%02.2d`Z",
+	return Format("%04.4d-%02.2d-%02.2d`T%02.2d`:%02.2d`:%02.2d`Z",
 		          t.year, t.month, t.day, t.hour, t.minute, t.second);
 }
 
@@ -29,11 +28,29 @@ String MakeBuild::CreateSBOM(const String& triplet)
 	Array<Component> cs;
 	JsonArray dependencies;
 
+	Index<String> deps_done;
+	auto AddDependency = [&](const String& from, const String& to) {
+		for(String h : { from + "\v" + to, to + "\v" + from }) {
+			if(deps_done.Find(h) < 0)
+				return;
+			deps_done.Add(h);
+		}
+		dependencies << Json("ref", from)("dependsOn", to);
+	};
+
 	auto ReadComponent = [&](Value p) {
 		Component& m = cs.Add();
 		m.name = p["name"];
 		m.version = p["versionInfo"];
-		m.licenses << p["licenseConcluded"];
+		for(String l : Split(~p["licenseConcluded"], ' ')) {
+			l = TrimBoth(l);
+			l.TrimStart("(");
+			l.TrimEnd(")");
+			l = TrimBoth(l);
+			if(SPDXLicenses().Find(l) >= 0)
+				m.licenses << l;
+		}
+		
 		m.homepage = p["homepage"];
 		m.originUrl = p["downloadLocation"];
 	
@@ -43,6 +60,7 @@ String MakeBuild::CreateSBOM(const String& triplet)
 	};
 
 	Index<String> required;
+	VectorMap<String, String> override_licenses;
 
 	const Workspace& wspc = GetIdeWorkspace();
 	for(int i = 0; i < wspc.GetCount(); i++) {
@@ -90,7 +108,8 @@ String MakeBuild::CreateSBOM(const String& triplet)
 			if(m.originUrl.GetCount())
 				m.sourceDistributions << m.originUrl + "@" + hash;
 		}
-		m.licenses << "BSD-2-Clause"; // todo
+
+		m.licenses << Nvl(pk.license_id, "BSD-2-Clause");
 		
 		JsonArray deps;
 		for(const OptItem& u : pk.uses)
@@ -101,14 +120,16 @@ String MakeBuild::CreateSBOM(const String& triplet)
 	#else
 		String pm = "DPKG"; // add more!
 	#endif
-		for(String s : RequiredExternalDependencies(pk, pm)) {
-			deps << s;
-			required.FindAdd(s);
+		for(auto s : RequiredExternalDependenciesInfo(pk, pm)) {
+			deps << s.name;
+			required.FindAdd(s.name);
+			if(s.license.GetCount())
+				override_licenses.GetAdd(s.name) = s.license;
 		}
-		dependencies << Json("ref", m.name)("dependsOn", deps);
+		AddDependency(m.name, deps);
 	}
 
-				JsonArray deps;
+	JsonArray deps;
 #ifdef PLATFORM_POSIX
 /*	VectorMap<String, String> pver;
 	for(String m : Split(Sys("dpkg-query -W"), '\n')) {
@@ -171,7 +192,7 @@ String MakeBuild::CreateSBOM(const String& triplet)
 					}
 				}
 				if(deps)
-					dependencies << Json("ref", name)("dependsOn", deps);
+					AddDependency(name, deps);
 				for(Value p : spdx["packages"]) {
 					String id = p["SPDXID"];
 					if(id.StartsWith("SPDXRef-resource-")) {
@@ -190,9 +211,17 @@ String MakeBuild::CreateSBOM(const String& triplet)
 	Json main_component;
 	for(const Component& c : cs) {
 		JsonArray licenses;
-		for(const String& s : c.licenses)
-			if(!IsNull(s))
-				licenses << Json("license", Json("id", s));
+
+		String ol = override_licenses.Get(c.name, Null);
+		if(ol.GetCount())
+			licenses << Json("license", Json("id", ol));
+		else
+			for(const String& s : c.licenses)
+				if(!IsNull(s))
+					licenses << Json("license", Json("id", s));
+
+		if(!licenses)
+			licenses << Json("license", Json("id", "NOASSERTION"));
 	
 		JsonArray extRefs;
 		if(!IsNull(c.homepage))
@@ -229,9 +258,9 @@ String MakeBuild::CreateSBOM(const String& triplet)
 
 	Json sbom;
 	sbom("bomFormat", "CycloneDX")
-	    ("specVersion", "1.4")
+	    ("specVersion", "1.6")
 	    ("version", 1)
-	    ("serialNumber", "urn:uuid:" + Uuid::CreateV4().ToString())
+	    ("serialNumber", "urn:uuid:" + Uuid::CreateV4().ToStringWithDashes())
 	    ("metadata", Upp::Json("timestamp", Format8601Z(GetUtcTime()))
 	                          ("tools", JsonArray() << Json("vendor", "U++")
 	                                                       ("name", "TheIDE")) // todo: umk when run from umk?
