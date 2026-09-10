@@ -11,6 +11,8 @@
 
 using namespace Upp;
 
+extern bool UMK; // this is umk (not theide)
+
 int CharFilterCid(int c);
 
 int    ReadLNG(CParser& p);
@@ -716,11 +718,23 @@ struct ExternalDependencyInfo : Moveable<ExternalDependencyInfo> {
 
 ExternalDependencyInfo GetExternalDependencyInfo(const String& txt);
 
-Vector<ExternalDependencyInfo> RequiredExternalDependenciesInfo(const Package& pkg, const String& manager);
-Vector<ExternalDependencyInfo> RequiredExternalDependenciesInfo(const String& manager);
+Vector<ExternalDependencyInfo> RequiredExternalDependenciesInfo(const Package& pkg);
+Vector<ExternalDependencyInfo> RequiredExternalDependenciesInfo();
 
-Vector<String>         RequiredExternalDependencies(const Package& pkg, const String& manager);
-Vector<String>         RequiredExternalDependencies(const String& manager);
+Vector<String>         RequiredExternalDependencies(const Package& pkg);
+Vector<String>         RequiredExternalDependencies();
+
+Vector<String>         MissingExternalDependencies(const String& triplet);
+
+// provided by platform:
+
+String         ExternalDependenciesManagerId();
+Index<String>  InstalledExternalDependencies(const String& triplet);
+String         InstallMissingExternalDependenciesCommand(const String& triplet);
+bool           InstallMissingExternalDependencies(Function<int(const String&, const String& chdir)> sys,
+                                                  const String& triplet);
+bool           CanInstallMissingExternalDependencies();
+
 
 #ifdef PLATFORM_WIN32
 
@@ -740,7 +754,6 @@ String                 VcpkgTriplet(const VectorMap<String, String>& vars, bool 
 Vector<String>         VcpkgTriplets();
 bool                   VcpkgHasInstalled(Vector<VcpkgInstalled>& items, const String& name, const String& triplet);
 bool                   VcpkgInstall(Function<int(const String&, const String& chdir)> sys, const String& name, const String& triplet);
-void                   VcpkgInstallMissing(Function<int(const String&, const String& chdir)> sys, const String& triplet);
 
 #endif
 
