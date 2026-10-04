@@ -705,7 +705,7 @@ class WebSocket {
 	void SendRequest();
 	bool ReadHttpHeader();
 	void ResponseHeader();
-	void RequestHeader();
+	int  RequestHeader();
 	void FrameHeader();
 	void FrameData();
 
@@ -733,7 +733,7 @@ public:
 	bool   IsError() const                              { return socket->IsError() || error.GetCount(); }
 	String GetError() const                             { return Nvl(socket->GetErrorDesc(), error); }
 	
-	bool   Accept(TcpSocket& listener_socket);
+	int    Accept(TcpSocket& listener_socket);
 	bool   Connect(const String& uri, const String& host, bool ssl, int port);
 	bool   Connect(const String& uri, const String& host, bool ssl) { return Connect(uri, host, ssl, ssl ? 440 : 80); }
 	bool   Connect(const String& url);
@@ -757,7 +757,7 @@ public:
 
 	void   Close(const String& msg = Null, bool wait_reply = false);
 	bool   IsOpen() const                               { return socket->IsOpen(); }
-	bool   IsClosed() const                             { return !IsOpen(); }
+	bool   IsClosed() const                             { return socket->IsEof(); }
 
 	dword  GetWaitEvents() const                        { return WAIT_READ|(!!out_queue.GetCount() * WAIT_WRITE); }
 	SOCKET GetSOCKET() const                            { return socket ? socket->GetSOCKET() : INVALID_SOCKET; }
