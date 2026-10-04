@@ -54,15 +54,15 @@ void WebSocket::Error(const String& err)
 	error = err;
 }
 
-bool WebSocket::Accept(TcpSocket& listen_socket)
+int WebSocket::Accept(TcpSocket& listen_socket)
 {
 	Clear();
 	if(!socket->Accept(listen_socket)) {
-		Error("Accept has failed");
-		return false;
+		return socket->IsError() ? -1 : 0;
 	}
 	opcode = HTTP_REQUEST_HEADER;
-	return true;
+	socket->Timeout(2000);
+	return RequestHeader();
 }
 
 WebSocket& WebSocket::Header(const char *id, const String& data)
@@ -218,25 +218,24 @@ bool WebSocket::ReadHttpHeader()
 	}
 }
 
-void WebSocket::RequestHeader()
+int WebSocket::RequestHeader()
 {
 	if(ReadHttpHeader()) {
 		HttpHeader hdr;
 		if(!hdr.Parse(data)) {
 			Error("Invalid HTTP header");
-			return;
-		}
+			return -1; // Error state
+		}		
 		String dummy;
 		hdr.Request(dummy, uri, dummy);
 		String key = hdr["sec-websocket-key"];
 		if(IsNull(key)) {
 			Error("Invalid HTTP header: missing sec-websocket-key");
-			return;
+			Close(); // Have to close the socket as this connection is not a web socket request
+			return -1; // Error state
 		}
-	
 		byte sha1[20];
 		SHA1(sha1, key + "258EAFA5-E914-47DA-95CA-C5AB0DC85B11");
-		
 		Out(
 			"HTTP/1.1 101 Switching Protocols\r\n"
 			"Upgrade: websocket\r\n"
@@ -247,7 +246,10 @@ void WebSocket::RequestHeader()
 		LLOG("HTTP request header received, sending response");
 		data.Clear();
 		opcode = READING_FRAME_HEADER;
+		NonBlocking();
+		return 1;
 	}
+	return 0;
 }
 
 void WebSocket::ResponseHeader()
@@ -382,11 +384,16 @@ void WebSocket::Do0()
 			Output();
 			if(socket->IsEof() && !(close_sent || close_received)) {
 				Error("Socket has been closed unexpectedly");
-				socket->Close(); // Ensure web socket does not hang
 			}
 		}
-		if(IsError())
+		if(IsError() || socket->IsEof()) {
+			if(socket->IsError()) {
+				LLOG("Do socket has unexpected error!!! "<<socket->GetErrorDesc());
+				socket->Close(); // Ensure web socket does not hang
+			}
+			error.Clear(); // Clear error message to allow process to continue
 			return;
+		}
 		switch(opcode) {
 		case DNS:
 			Dns();
@@ -461,7 +468,7 @@ void WebSocket::Output()
 
 void WebSocket::SendRaw(int hdr, const String& data, dword mask)
 {
-	if(IsError())
+	if(IsError() || socket->IsEof())
 		return;
 	
 	ASSERT(!close_sent);
