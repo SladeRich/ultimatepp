@@ -1,8 +1,8 @@
 #include <arm_neon.h>
 
 force_inline
-uint64 cmask16__(uint16x8_t mask) {
-	uint8x8_t res = vshrn_n_u16(mask, 4);
+uint64 cmask16__(int16x8_t mask) {
+	uint8x8_t res = vshrn_n_u16(vreinterpretq_u16_s16(mask), 4);
 	uint64_t  matches = vget_lane_u64(vreinterpret_u64_u8(res), 0);
 	return matches;
 }
@@ -66,7 +66,7 @@ force_inline f32x4  operator>(f32x4 a, f32x4 b)   { return vreinterpretq_f32_u32
 force_inline f32x4  operator<=(f32x4 a, f32x4 b)  { return vreinterpretq_f32_u32(vcleq_f32(a, b)); }
 force_inline f32x4  operator>=(f32x4 a, f32x4 b)  { return vreinterpretq_f32_u32(vcgeq_f32(a, b)); }
 
-force_inline uint64 cmaskf__(float32x4_t mask)      { return cmask16__(vreinterpretq_u16_f32(mask)); }
+force_inline uint64 cmaskf__(float32x4_t mask)      { return cmask16__(vreinterpretq_s16_f32(mask)); }
 force_inline bool   AllTrue(f32x4 a)                { return cmaskf__(a.data) == cmask_all__; }
 force_inline bool   AnyTrue(f32x4 a)                { return cmaskf__(a.data); }
 force_inline int    CountTrue(f32x4 a)              { return CountBits64(cmaskf__(a.data)) >> 4; }
