@@ -319,6 +319,7 @@ Pdb::Context Pdb::ReadContext(Thread::Hnd hThread)
 			Error("GetThreadContext failed");
 		memcpy(&r.context64, &ctx, sizeof(CONTEXT));
 	}
+#ifndef CPU_ARM
 	else {
 		static BOOL (WINAPI *Wow64GetThreadContext)(HANDLE hThread, PWOW64_CONTEXT lpContext);
 		ONCELOCK
@@ -330,6 +331,7 @@ Pdb::Context Pdb::ReadContext(Thread::Hnd hThread)
 			Error("Wow64GetThreadContext failed");
 		memcpy(&r.context32, &ctx, sizeof(WOW64_CONTEXT));
 	}
+#endif
 #else
 	CONTEXT ctx;
 	ctx.ContextFlags = CONTEXT_FULL;
@@ -374,6 +376,7 @@ void Pdb::WriteContext(Thread::Hnd  hThread, Context& context)
 		if(!SetThreadContext(hThread, &ctx))
 			Error("SetThreadContext failed");
 	}
+#ifndef CPU_ARM
 	else {
 		static BOOL (WINAPI *Wow64SetThreadContext)(HANDLE hThread, PWOW64_CONTEXT lpContext);
 		DllFn(Wow64SetThreadContext, "Kernel32.dll", "Wow64SetThreadContext");
@@ -384,6 +387,7 @@ void Pdb::WriteContext(Thread::Hnd  hThread, Context& context)
 		if(!Wow64SetThreadContext || !Wow64SetThreadContext(hThread, &ctx))
 			Error("Wow64SetThreadContext failed");
 	}
+#endif
 #else
 	CONTEXT ctx;
 	memcpy(&ctx, &context.context32, sizeof(WOW64_CONTEXT));
@@ -608,17 +612,30 @@ bool Pdb::RunToException()
 						LLOG("Setting current context");
 						if(isbreakpoint
 #ifdef CPU_64
+#ifdef CPU_ARM
+						   && bp_set.Find(t.context64.Pc - 1) >= 0
+#else
 						   && bp_set.Find((win64 ? t.context64.Rip : t.context32.Eip) - 1) >= 0
+#endif
 #else
 						   && bp_set.Find(t.context32.Eip - 1) >= 0
 #endif
 						) { // We have stopped at breakpoint, need to move address back
 					#ifdef CPU_64
+					#ifdef CPU_ARM
+							if(win64)
+								t.context64.Pc--;
+							else
+					#else
 							if(win64)
 								t.context64.Rip--;
 							else
 					#endif
+					#endif
+					#ifndef CPU_ARM
 								t.context32.Eip--;
+					#endif
+							;
 						}
 						context = t;
 					}
@@ -924,22 +941,41 @@ bool Pdb::SingleStep()
 #ifdef PLATFORM_WIN32
 
 #if CPU_64
-	if(win64)
-		context.context64.EFlags |= 0x100;
-	else
+    if(win64) {
+    #ifdef CPU_ARM
+        // ARM64 single-step: set SS bit in CPSR/DebugControl
+        context.context64.Cpsr |= 0x40000000;   // SS bit (bit 31) in CPSR
+    #else
+        // AMD64 single-step: set Trap Flag in EFlags
+        context.context64.EFlags |= 0x100;
+    #endif
+    }
+    else
 #endif
-		context.context32.EFlags |= 0x100;
-	WriteContext();
-	running = true;
-	ContinueDebugEvent(event.dwProcessId, event.dwThreadId, DBG_CONTINUE);
-	if(!RunToException())
-		return false;
+#ifndef CPU_ARM
+        context.context32.EFlags |= 0x100;
+#endif
+    WriteContext();
+    running = true;
+    ContinueDebugEvent(event.dwProcessId, event.dwThreadId, DBG_CONTINUE);
+    if(!RunToException())
+        return false;
+
 #if CPU_64
-	if(win64)
-		context.context64.EFlags &= ~0x100;
-	else
+    if(win64) {
+    #ifdef CPU_ARM
+        // Clear SS bit
+        context.context64.Cpsr &= ~0x40000000;
+    #else
+        // Clear Trap Flag
+        context.context64.EFlags &= ~0x100;
+    #endif
+    }
+    else
 #endif
+#ifndef CPU_ARM
 		context.context32.EFlags &= ~0x100;
+#endif
 	WriteContext();
 
 #else
