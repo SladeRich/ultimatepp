@@ -136,9 +136,12 @@ ExtDepDlg::ExtDepDlg()
 	when.Appending(" ");
 
 	when <<= ExternalDependenciesManagerId();
-	
-	text.SetFilter([](int c) { return c == ' ' ? 0 : c; });
-	
+
+#ifdef PLATFORM_MACOS // '|' looks ugly in standard font
+	text.SetFont(SansSerif(StdFont().GetHeight()));
+#endif
+
+	license.SetFilter([](int c) { return c == ' ' ? 0 : c; });
 	for(String id : SPDXLicenses()) // TODO
 		license.AddList(id);
 	license.NullText("resolve automatically");
@@ -150,8 +153,11 @@ ExtDepDlg::ExtDepDlg()
 #else
 		p = SelectExternalDependency();
 #endif
-		if(p.GetCount())
-			text <<= p;
+		if(p.GetCount()) {
+			String s = ~text;
+			MergeWith(s, " ", p);
+			text <<= s;
+		}
 	};
 }
 
@@ -159,21 +165,20 @@ String ExtDepDlg::GetText() const
 {
 	String r = ~text;
 	if(!IsNull(license))
-		r << " license(" << AsCString(~license) << ")";
+		r << " license(" << ~license << ")";
 	return r;
 }
 
 void ExtDepDlg::SetText(String txt)
 {
-	int q = txt.Find(' ');
-	if(q >= 0) {
-		text <<= txt.Mid(0, q);
-		ExternalDependencyInfo f = GetExternalDependencyInfo(txt);
-		text <<= f.name;
+	Vector<ExternalDependencyInfo> r;
+	ParseExternalDependencyInfo(r, txt);
+	String s;
+	for(const auto& f : r) {
+		MergeWith(s, " ", f.name);
 		license <<= f.license;
 	}
-	else
-		text <<= txt;
+	text <<= s;
 }
 
 void PackageEditor::SaveOptions() {
@@ -491,6 +496,21 @@ void PackageEditor::OptionMenu(Bar& bar)
 	bar.Add(m && i >= 0 && max(i, i + 1) < m->GetCount(),
 	        "Move down", THISBACK1(MoveOption, 1))
 	   .Key(K_CTRL_DOWN);
+	if(IsVerbose()) {
+		bar.Separator();
+		bar.Add("Flatten dependencies", [this] {
+			VectorMap<String, String> map;
+			for(const OptItem& m : actual.external_dependency)
+				MergeWith(map.GetAdd(m.when), " ", m.text);
+			actual.external_dependency.Clear();
+			for(const auto& e : ~map) {
+				OptItem& m = actual.external_dependency.Add();
+				m.when = e.key;
+				m.text = e.value;
+			}
+			SaveLoadPackage();
+		});
+	}
 }
 
 void PackageEditor::FileCursor()
