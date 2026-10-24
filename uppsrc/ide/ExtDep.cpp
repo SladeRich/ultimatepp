@@ -85,8 +85,8 @@ SelectExtDepDlg::SelectExtDepDlg()
 	
 	if(IsBREW()) {
 		Progress pi("Updating database");
-		for(Value p : GetBrewJson([&](int pos, int total) { return pi.SetCanceled(pos, total); }))
-			src << ~p["name"] + " - " + ~p["desc"];
+		for(const auto& m : GetBrewPackages([&](int pos, int total) { return pi.SetCanceled(pos, total); }))
+			src << m.name + " - " + m.description;
 	}
 	else
 		src = Split(Sys(IsRPM() ? "dnf repoquery --queryformat '%{name} - %{summary}' '*'"
@@ -134,4 +134,40 @@ String SelectExternalDependency()
 	if(dlg.ExecuteOK())
 		return ~dlg.list.GetKey();
 	return Null;
+}
+
+struct ShowExtDepDlg : WithShowExtDepLayout<TopWindow> {
+	ShowExtDepDlg();
+	
+	void Sync();
+};
+
+ShowExtDepDlg::ShowExtDepDlg()
+{
+	CtrlLayoutExit(*this, "Show External Dependencies");
+
+	when <<= Join(GetExternalDependenciesKeys(), " ");
+	when << [this] { Sync(); };
+	when.AddList("VCPKG WIN32");
+	when.AddList("DPKG POSIX LINUX");
+	when.AddList("RPM POSIX LINUX");
+	when.AddList("BREW POSIX MACOS");
+	
+	copy.SetImage(CtrlImg::copy());
+	copy << [this] { WriteClipboardText(list.Get().GetPlainText().ToString()); };
+	
+	Sync();
+}
+
+void ShowExtDepDlg::Sync()
+{
+	Index<String> l;
+	for(ExternalDependencyInfo f : RequiredExternalDependenciesInfo(Split(~~when, ' ')))
+		l.FindAdd(f.name);
+	list <<= "[g \1" + Join(l.GetKeys(), " ");
+}
+
+void ShowExternalDependencies()
+{
+	ShowExtDepDlg().Execute();
 }
