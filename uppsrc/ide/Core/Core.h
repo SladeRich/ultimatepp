@@ -716,14 +716,19 @@ String CleanupPretty(const String& signature);
 
 Vector<ItemTextPart> ParsePretty(const String& name, const String& signature, int *fn_info = NULL);
 
+Index<String> AllHostPackagesList();
+
 struct ExternalDependencyInfo : Moveable<ExternalDependencyInfo> {
 	String name;
 	String license;
 };
 
-ExternalDependencyInfo GetExternalDependencyInfo(const String& txt);
+void ParseExternalDependencyInfo(Vector<ExternalDependencyInfo>& r, const String& txt);
 
+Vector<String>                 GetExternalDependenciesKeys();
+Vector<ExternalDependencyInfo> RequiredExternalDependenciesInfo(const Package& pkg, const Vector<String>& keys);
 Vector<ExternalDependencyInfo> RequiredExternalDependenciesInfo(const Package& pkg);
+Vector<ExternalDependencyInfo> RequiredExternalDependenciesInfo(const Vector<String>& keys);
 Vector<ExternalDependencyInfo> RequiredExternalDependenciesInfo();
 
 Vector<String>         RequiredExternalDependencies(const Package& pkg);
@@ -767,6 +772,11 @@ bool                   VcpkgInstall(Function<int(const String&, const String& ch
 Index<String>          VcpkgInstalledExternalDependencies(const String& triplet);
 bool                   VcpkInstallMissingExternalDependencies(Function<int(const String&, const String& chdir)> sys, const String& triplet);
 
-Value                  GetBrewJson(Gate<int, int> progress);
+struct BrewPackageInfo : Moveable<BrewPackageInfo> {
+	String name;
+	String description;
+};
+
+const Vector<BrewPackageInfo>& GetBrewPackages(Gate<int, int> progress = Null);
 
 #endif
