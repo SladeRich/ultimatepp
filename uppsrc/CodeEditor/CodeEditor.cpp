@@ -106,6 +106,17 @@ void CodeEditor::Paint(Draw& w)
 {
 	LineEdit::Paint(w);
 
+	Size sz = GetSize();
+
+	if(newfile && !IsDirty()) {
+		static String txt = "File does not exist yet";
+		Size tsz = GetTextSize(txt, ArialZ(20));
+		if(tsz.cx < sz.cx && tsz.cy < sz.cy) {
+			Point p = (sz - tsz) / 2;
+			w.DrawText(p.x, p.y, txt, ArialZ(20), Gray());
+		}
+	}
+
 	if(!blk0_header)
 		return;
 
@@ -139,29 +150,33 @@ void CodeEditor::Paint(Draw& w)
 			line0 = i;
 			while(i < GetScrollPos().y + 1) {
 				String l = GetUtf8Line(i);
-				CParser p(l);
-				try {
-					while(!p.IsEof())
-						if(p.Id("public"))
-							access = 0;
-						else
-						if(p.Id("protected"))
-							access = 1;
-						else
-						if(p.Id("private"))
-							access = 2;
-						else
-							p.Skip();
+				if(l.Find("*/") >= 0)
+					line0 = ++i;
+				else {
+					CParser p(l);
+					try {
+						while(!p.IsEof())
+							if(p.Id("public"))
+								access = 0;
+							else
+							if(p.Id("protected"))
+								access = 1;
+							else
+							if(p.Id("private"))
+								access = 2;
+							else
+								p.Skip();
+					}
+					catch(CParser::Error) {}
+					i++;
 				}
-				catch(CParser::Error) {}
-				i++;
 			}
 			break;
 		}
 		if(!empty && line0 < 0)
 			line0 = i;
 	}
-	
+
 	if(line0 < 0 || GetScrollPos().y <= line0)
 		return;
 
@@ -169,8 +184,6 @@ void CodeEditor::Paint(Draw& w)
 	int h = GetPos(start.y, start.x) - 1;
 	if(l < 0 || l >= h)
 		return;
-
-	Size sz = GetSize();
 
 	bool dark = IsDark(HighlightSetup::GetHlStyle(HighlightSetup::PAPER_NORMAL).color);
 	Color paper = GrayColor(dark ? 40 : 245);
@@ -284,6 +297,7 @@ void CodeEditor::PostInsert(int pos, const WString& text) {
 	}
 	WhenUpdate();
 	EditorBarLayout();
+	EndNewFile();
 }
 
 void CodeEditor::PreRemove(int pos, int size) {
@@ -310,6 +324,15 @@ void CodeEditor::PostRemove(int pos, int size) {
 	if(GetRefreshInfo(pos) != refresh_info)
 		Refresh();
 	sbi.Refresh();
+	EndNewFile();
+}
+
+void CodeEditor::EndNewFile()
+{
+	if(newfile) {
+		newfile = false;
+		Refresh();
+	}
 }
 
 void CodeEditor::ClearLines() {
