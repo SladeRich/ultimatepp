@@ -452,13 +452,10 @@ String Smtp::GetMessage(bool chunks)
 			source.Create<StringStream>().Open(a.data);
 		msg << "--" << delimiter << "\r\n"
 			"Content-Type: " << a.mime << "; name=\"" << a.name << "\"\r\n"
-			"Content-Transfer-Encoding: base64\r\n";
-		if(a.contentId.IsEmpty())
-			msg  << "Content-Disposition: " << a.disposition << "; filename=\"" << a.name << "\"\r\n";
-		else {
-			msg  << "Content-Disposition: " << a.disposition << "\"\r\n"
-			        "Content-Id: " << a.contentId << "; name=\"" << a.name << "\"\r\n";
-		}
+			"Content-Transfer-Encoding: base64\r\n"
+			"Content-Disposition: " << a.disposition << "; filename=\"" << a.name << "\"\r\n";
+		if(!a.contentId.IsEmpty())
+			msg << "Content-Id: <" << a.contentId << ">\r\n";
 		msg << "\r\n"; // End of attachment header block
 
 		char buffer[54];
