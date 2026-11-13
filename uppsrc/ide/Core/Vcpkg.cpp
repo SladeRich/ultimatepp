@@ -36,12 +36,12 @@ bool IsVcpkgAvailable(Function<int(const String&, const String& chdir)> sys)
 	return IsVcpkgInstalled();
 }
 
-Vector<VcpkgInstalled> VcpkgList()
+Vector<VcpkgPackageInfo> VcpkgListInstalled()
 {
-	VectorMap<String, VcpkgInstalled> ms;
+	VectorMap<String, VcpkgPackageInfo> ms;
 	for(Value l : ParseJSON(Sys(VcpkgExe() + " list --x-json"))) {
 		String name = ~l["package_name"];
-		VcpkgInstalled& m = ms.GetAdd(name);
+		VcpkgPackageInfo& m = ms.GetAdd(name);
 		m.name = name;
 		m.triplets.FindAdd(~l["triplet"]);
 		m.version = ~l["version"];
@@ -54,17 +54,55 @@ Vector<VcpkgInstalled> VcpkgList()
 	return ms.PickValues();
 }
 
-String VcpkgTriplet(const String& builder, const String& compiler, bool so)
+Vector<VcpkgPackageInfo> VcpkgListAll()
 {
 #ifdef PLATFORM_WIN32
-	if(builder == "CLANG")
-		return compiler.Find("i686") >= 0 ? so ? "x86-mingw-dynamic-release" : "x86-mingw-static-release"
-											: compiler.Find("aarch64") >= 0 ? so ? "arm64-mingw-dynamic" : "arm64-mingw-static"
-		                                  : so ? "x64-mingw-dynamic-release" : "x64-mingw-static-release";
+	const static String mingit = GetExeDirFile("bin/mingit/cmd/git.exe");
+	const static String git = FileExists(mingit) ? mingit : "git";
+#else
+	const static String git = "git";
+#endif
+
+	struct Cache : Moveable<Cache> {
+		String head;
+		Vector<VcpkgPackageInfo> list;
+		void Serialize(Stream& s) { s % head % list; };
+	};
+
+	Cache c;
+	String cache = ConfigFile("vcpkg.cache");
+	String head = TrimBoth(Sys(git + " -C \"" + GetFileFolder(VcpkgExe()) + "\" rev-parse HEAD"));
+	if(head.GetCount() != 40) head.Clear();
+	if(!LoadFromFile(c, cache, 20261105) || head.IsEmpty() || head != c.head) {
+		c.head = head;
+		c.list.Clear();
+		for(Value l : ParseJSON(Sys(VcpkgExe() + " search --x-json"))) {
+			VcpkgPackageInfo& m = c.list.Add();
+			m.name = ~l["package_name"];
+			m.version = ~l["version"];
+			String p = ~l["port_version"];
+			if(p != "0")
+				m.version << '#' << p;
+			if(l["description"].GetCount())
+				m.desc = l["description"][0];
+		}
+		StoreToFile(c, cache, 20261105);
+	}
+	return pick(c.list);
+}
+
+String VcpkgTriplet(const String& builder, const String& compiler, bool so, bool md)
+{
+	if(builder == "CLANG"){ // llvm-mingw cross-compilation support for Windows
+		if(compiler.Find("i686-w64-mingw32")>=0) return so ? "x86-mingw-dynamic-release" : "x86-mingw-static-release";
+		if(compiler.Find("x86_64-w64-mingw32")>=0) return so ? "x64-mingw-dynamic-release" : "x64-mingw-static-release";
+		if(compiler.Find("aarch64-w64-mingw32")>=0) return so ? "arm64-mingw-dynamic" : "arm64-mingw-static";
+	}
+#ifdef PLATFORM_WIN32
 	if(builder.StartsWith("MSC"))
-		return builder.Find("ARM64") >= 0 ? so ? "arm64-windows" : "arm64-windows-static-release"
-				: builder.Find("64") >= 0 ? so ? "x64-windows-release" : "x64-windows-static-release" // 2026-10-19 - Switched to -release (=> skip debug builds)
-				: so ? "x86-windows" : "x86-windows-static";
+		return builder.Find("ARM64") >= 0 ? so ? "arm64-windows" : md ? "arm64-windows-static-md" : "arm64-windows-static-release"
+				: builder.Find("64") >= 0 ? so ? "x64-windows-release" : md ? "x64-windows-static-md-release" : "x64-windows-static-release"
+				: so ? "x86-windows" : md ? "x86-windows-static-md" : "x86-windows-static";
 	return "x64-mingw-static-release";
 #else
 #ifdef CPU_ARM
@@ -76,9 +114,9 @@ String VcpkgTriplet(const String& builder, const String& compiler, bool so)
 #endif
 }
 
-String VcpkgTriplet(const VectorMap<String, String>& vars, bool so)
+String VcpkgTriplet(const VectorMap<String, String>& vars, bool so, bool md)
 {
-	return VcpkgTriplet(vars.Get("BUILDER", Null), vars.Get("COMPILER", Null), so);
+	return VcpkgTriplet(vars.Get("BUILDER", Null), vars.Get("COMPILER", Null), so, md);
 }
 
 Vector<String> VcpkgTriplets()
@@ -88,8 +126,10 @@ Vector<String> VcpkgTriplets()
 		VectorMap<String, String> vars;
 		String fn = ConfigFile(ff.GetName());
 		if(LoadVarFile(fn, vars)) {
-			ts.FindAdd(VcpkgTriplet(vars, false));
-			ts.FindAdd(VcpkgTriplet(vars, true));
+			ts.FindAdd(VcpkgTriplet(vars, false, false));
+			ts.FindAdd(VcpkgTriplet(vars, false, true));
+			ts.FindAdd(VcpkgTriplet(vars, true, false));
+			ts.FindAdd(VcpkgTriplet(vars, true, true));
 		}
 	}
 	
@@ -98,9 +138,9 @@ Vector<String> VcpkgTriplets()
 	return triplets;
 }
 
-bool VcpkgHasInstalled(Vector<VcpkgInstalled>& items, const String& name, const String& triplet)
+bool VcpkgHasInstalled(Vector<VcpkgPackageInfo>& items, const String& name, const String& triplet)
 {
-	for(const VcpkgInstalled& m : items)
+	for(const VcpkgPackageInfo& m : items)
 		if(m.name == name && m.triplets.Find(triplet) >= 0)
 			return true;
 	return false;
@@ -114,8 +154,8 @@ bool VcpkgInstall(Function<int(const String&, const String& chdir)> sys, const S
 Index<String> VcpkgInstalledExternalDependencies(const String& triplet)
 {
 	Index<String> r;
-	Vector<VcpkgInstalled> installed = VcpkgList();
-	for(const VcpkgInstalled& m : installed)
+	Vector<VcpkgPackageInfo> installed = VcpkgListInstalled();
+	for(const VcpkgPackageInfo& m : installed)
 		if(m.triplets.Find(triplet) >= 0)
 			r.FindAdd(m.name);
 	return r;

@@ -174,7 +174,7 @@ void Ide::EditSpecial(Bar& menu)
 	menu.Add(AK_COPYWORD, THISBACK(CopyWord))
 	    .Help("Copy the current identifier to the clipboard");
 	menu.Add(AK_COPYRICH, [this] { CopyRich(); })
-	    .Help("Copy selection as syntax highlithed richtext");
+	    .Help("Copy selection as syntax highlighted richtext");
 	menu.Add(b, AK_DUPLICATEIT, THISBACK(Duplicate))
 	    .Help("Duplicate the current line");
 	menu.Add(b && editor.IsSelection(), AK_TOUPPER, THISBACK(TextToUpper))
@@ -528,6 +528,7 @@ void Ide::Project(Bar& menu)
 		menu.AddMenu(AK_MAINCONFIG, IdeImg::main_package(), THISBACK(MainConfig))
 			.Help("Configuring compiler, operating system, output application parameters, custom flags");
 		menu.Add("Install missing external dependencies..", [this] { SyncExternalDependencies(true, true); });
+		menu.Add("Show external dependencies..", [] { ShowExternalDependencies(); });
 		menu.MenuSeparator();
 		menu.AddMenu(AK_SYNCT, IdeImg::Language(), THISBACK1(SyncT, 0))
 		    .Help("Synchronize all language translation files of current workspace");
@@ -896,10 +897,16 @@ void Ide::DebugMenu(Bar& menu)
 	}
 }
 
+void Ide::AIMenu(Bar& menu)
+{
+	menu.Add("Review", [this] { AIReview(); });
+}
+
 void Ide::AssistMenu(Bar& menu)
 {
 	LTIMESTOP("AssistMenu");
 	menu.Add(!designer, AK_ASSIST, [this] { editor.Assist(true); });
+	menu.Add(!designer, AK_AI, [this] { AIPane(); });
 	auto& m = menu.Add(!designer, AK_JUMPS, [this] { ContextGoto(); });
 	if(IsInLogFile())
 		m.Text("Try to find the source of log line");
@@ -1090,8 +1097,9 @@ void Ide::MainTool(Bar& bar)
 	}
 	HelpMenu(bar);
 #ifdef PLATFORM_COCOA
+	bar.Add(display_main, HorzLayoutZoom(90));
 	bar.GapRight();
-	bar.Add(display, HorzLayoutZoom(170));
+	bar.Add(display, HorzLayoutZoom(250));
 #endif
 }
 
@@ -1139,6 +1147,7 @@ void Ide::SetToolBar()
 void Ide::EditorMenu(Bar& bar)
 {
 	bar.Sub("Assist", [this](Bar& bar) { AssistMenu(bar); });
+	bar.Sub("AI", [this](Bar& bar) { AIMenu(bar); });
 	Reformat(bar);
 	InsertAdvanced(bar);
 //	bar.Add("Find and Replace", THISBACK(SearchMenu));

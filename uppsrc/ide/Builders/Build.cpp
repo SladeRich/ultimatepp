@@ -106,7 +106,7 @@ String NoCr(const char *s)
 
 String MakeBuild::GetVcpkgTriplet(const VectorMap<String, String>& bm) const
 {
-	return VcpkgTriplet(bm, GetTargetMode().linkmode);
+	return VcpkgTriplet(bm,  GetTargetMode().linkmode, mainconfigparam.Find("MD") >= 0);
 }
 
 void MakeBuild::CreateHost(Host& host, const String& method, bool darkmode, bool disable_uhd, int scale, bool exit_pause)
@@ -115,16 +115,16 @@ void MakeBuild::CreateHost(Host& host, const String& method, bool darkmode, bool
 	{
 		VectorMap<String, String> env = clone(Environment());
 		host.exedirs = SplitDirs(bm.Get("PATH", "") + ';' + env.Get("PATH", ""));
-		if(IsVCPKG() && IsVcpkgInstalled()) {
-			host.exedirs << GetExeDirFile("vcpkg");
-			host.exedirs << GetExeDirFile("vcpkg") + "/installed/" + GetVcpkgTriplet(bm) + "/bin";
+		if(IsVcpkgInstalled()) {
+			host.exedirs << GetFileFolder(VcpkgExe());
+			host.exedirs << GetFileFolder(VcpkgExe()) + "/installed/" + GetVcpkgTriplet(bm) + "/bin";
 		}
 #ifdef PLATFORM_WIN32
 		host.AddExecutable(GetExeDirFile("bin/mingit/cmd"), "git.exe");
 		host.AddExecutable(GetExeDirFile("bin/clang/bin"), "clang-format.exe");
 		
-		env.GetAdd("VCPKG_DEFAULT_TRIPLET") = "x64-mingw-static";
-		env.GetAdd("VCPKG_DEFAULT_HOST_TRIPLET") = "x64-mingw-static";
+		env.GetAdd("VCPKG_DEFAULT_TRIPLET") = "x64-mingw-static-release";
+		env.GetAdd("VCPKG_DEFAULT_HOST_TRIPLET") = "x64-mingw-static-release";
 		env.GetAdd("PATH") = Join(host.exedirs, ";");
 #else
 		env.GetAdd("PATH") = Join(host.exedirs, ":");
@@ -158,13 +158,28 @@ void MakeBuild::CreateHost(Host& host, const String& method, bool darkmode, bool
 				env.GetAdd("JAVA_HOME") = jdkPath;
 			}
 		}
-		
+
 		for(int i = 0; i < env.GetCount(); i++) {
-			LDUMP(env.GetKey(i));
-			LDUMP(env[i]);
-			host.environment << env.GetKey(i) << '=' << env[i] << '\0';
+			auto key = env.GetKey(i);
+			auto value = env[i];
+
+#ifdef PLATFORM_POSIX
+			if(key == "CPLUS_INCLUDE_PATH" || key == "C_INCLUDE_PATH" || key == "CPATH") {
+				Vector<String> parts;
+				for(const String& p : Split(value, ':')) {
+					if(!p.IsEmpty())
+						parts.Add(p);
+				}
+				value = Join(parts, ":");
+			}
+#endif
+
+			LDUMP(key);
+			LDUMP(value);
+
+			host.environment << key << '=' << value << '\0';
 		}
-		
+
 		host.environment.Cat(0);
 		host.cmdout = &cmdout;
 	}

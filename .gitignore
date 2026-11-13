@@ -1,2 +1,9 @@
-.DS_Store
+/.cache/
+/.config/
+/.local/
+/.vscode/
+/theide
+/theide.app
+/umk
 
+.DS_Store

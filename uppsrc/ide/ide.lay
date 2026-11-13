@@ -699,6 +699,14 @@ LAYOUT(SetupWebSearchTabLayout, 556, 200)
 	ITEM(Upp::Button, remove, SetLabel(t_("Remove engine")).RightPosZ(60, 100).TopPosZ(8, 23))
 END_LAYOUT
 
+LAYOUT(SetupAILayout, 500, 156)
+	ITEM(Upp::WithDropChoice<Upp::EditString>, model, LeftPosZ(192, 300).TopPosZ(4, 19))
+	ITEM(Upp::Label, dv___1, SetLabel(t_("API key")).LeftPosZ(4, 40).TopPosZ(28, 19))
+	ITEM(Upp::EditString, key, LeftPosZ(64, 428).TopPosZ(28, 19))
+	ITEM(Upp::Label, dv___3, SetLabel(t_("AI")).LeftPosZ(4, 40).TopPosZ(4, 19))
+	ITEM(Upp::DropList, kind, LeftPosZ(64, 124).TopPosZ(4, 19))
+END_LAYOUT
+
 LAYOUT(GotoLayout, 796, 524)
 	ITEM(Upp::Label, dv___0, SetLabel(t_("Go to")).LeftPosZ(188, 40).TopPosZ(12, 19))
 	ITEM(Upp::EditString, target, HSizePosZ(228, 296).TopPosZ(12, 19))
@@ -735,16 +743,17 @@ LAYOUT(UppOptPushDlg, 340, 92)
 	ITEM(Upp::Button, cancel, SetLabel(t_("Cancel")).RightPosZ(8, 64).BottomPosZ(8, 24))
 END_LAYOUT
 
-LAYOUT(UppExtDepLayout, 340, 116)
+LAYOUT(UppExtDepLayout, 636, 116)
 	ITEM(Upp::Label, dv___0, SetLabel(t_("When")).LeftPosZ(4, 48).TopPosZ(8, 19))
-	ITEM(Upp::WithDropChoice<Upp::EditString>, when, LeftPosZ(56, 276).TopPosZ(8, 19))
-	ITEM(Upp::Label, dv___2, SetLabel(t_("Package")).LeftPosZ(4, 52).TopPosZ(32, 20))
-	ITEM(Upp::EditString, text, HSizePosZ(56, 32).TopPosZ(32, 20))
+	ITEM(Upp::WithDropChoice<Upp::EditString>, when, LeftPosZ(64, 564).TopPosZ(8, 19))
+	ITEM(Upp::Label, dv___2, SetLabel(t_("Package(s)")).LeftPosZ(4, 52).TopPosZ(32, 20))
+	ITEM(Upp::EditString, text, HSizePosZ(64, 32).TopPosZ(32, 20))
 	ITEM(Upp::Label, dv___4, SetLabel(t_("License")).LeftPosZ(4, 52).TopPosZ(56, 19))
-	ITEM(Upp::WithDropChoice<Upp::EditString>, license, LeftPosZ(56, 276).TopPosZ(56, 19))
+	ITEM(Upp::WithDropChoice<Upp::EditString>, license, LeftPosZ(64, 564).TopPosZ(56, 19))
 	ITEM(Upp::Button, ok, SetLabel(t_("OK")).RightPosZ(76, 64).BottomPosZ(8, 24))
 	ITEM(Upp::Button, cancel, SetLabel(t_("Cancel")).RightPosZ(8, 64).BottomPosZ(8, 24))
-	ITEM(Upp::Button, sel_package, SetLabel(t_("..")).LeftPosZ(312, 20).TopPosZ(32, 20))
+	ITEM(Upp::Button, sel_package, SetLabel(t_("..")).LeftPosZ(608, 20).TopPosZ(32, 20))
+	ITEM(Upp::Label, dv___9, SetLabel(t_("\001[g/ use [/* |] to provide alternative package names, e.g. [/ libz-dev[* |]libz-devel")).LeftPosZ(4, 448).TopPosZ(88, 19))
 END_LAYOUT
 
 LAYOUT(EventsLayout, 712, 496)
@@ -868,6 +877,13 @@ LAYOUT(GoToLineLayout, 260, 88)
 	ITEM(Upp::EditInt, lineEdit, NotNull(true).HSizePosZ(8, 8).TopPosZ(28, 19))
 	ITEM(Upp::Button, ok, SetLabel(t_("OK")).RightPosZ(76, 64).BottomPosZ(8, 24))
 	ITEM(Upp::Button, cancel, SetLabel(t_("Cancel")).RightPosZ(8, 64).BottomPosZ(8, 24))
+END_LAYOUT
+
+LAYOUT(ShowExtDepLayout, 508, 184)
+	ITEM(Upp::WithDropChoice<Upp::EditString>, when, LeftPosZ(4, 496).TopPosZ(4, 19))
+	ITEM(Upp::RichTextCtrl, list, LeftPosZ(4, 496).TopPosZ(28, 116))
+	ITEM(Upp::Button, copy, SetLabel(t_("Copy")).LeftPosZ(4, 64).TopPosZ(152, 24))
+	ITEM(Upp::Button, exit, SetLabel(t_("Close")).LeftPosZ(436, 64).TopPosZ(152, 24))
 END_LAYOUT
 
 LAYOUT(BaseSetupLayout, 664, 176)
@@ -1078,12 +1094,12 @@ LAYOUT(SelectExtDepLayout, 912, 516)
 	ITEM(Upp::EditString, search, LeftPosZ(4, 160).TopPosZ(484, 19))
 END_LAYOUT
 
-LAYOUT(SBOMLayout, 992, 580)
-	ITEM(Upp::ArrayCtrl, list, HSizePosZ(4, 4).VSizePosZ(4, 36))
-	ITEM(Upp::Button, save, SetLabel(t_("Save..")).LeftPosZ(4, 56).TopPosZ(552, 24))
-	ITEM(Upp::DropList, mode, HSizePosZ(68, 280).TopPosZ(554, 19))
-	ITEM(Upp::EditString, search, LeftPosZ(764, 104).TopPosZ(554, 19))
-	ITEM(Upp::Button, exit, SetLabel(t_("Close")).RightPosZ(4, 64).BottomPosZ(4, 24))
+LAYOUT(SBOMLayout, 992, 468)
+	ITEM(Upp::ArrayCtrl, list, HSizePosZ(4, 4).VSizePosZ(4, 40))
+	ITEM(Upp::Button, save, SetLabel(t_("Save..")).LeftPosZ(4, 56).BottomPosZ(8, 24))
+	ITEM(Upp::DropList, mode, HSizePosZ(68, 280).BottomPosZ(11, 19))
+	ITEM(Upp::EditString, search, RightPosZ(124, 104).BottomPosZ(11, 19))
+	ITEM(Upp::Button, exit, SetLabel(t_("Close")).RightPosZ(4, 64).BottomPosZ(8, 24))
 END_LAYOUT
 
 LAYOUT(SysConsoleLayout, 680, 660)

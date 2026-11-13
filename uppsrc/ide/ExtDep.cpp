@@ -85,8 +85,25 @@ SelectExtDepDlg::SelectExtDepDlg()
 	
 	if(IsBREW()) {
 		Progress pi("Updating database");
-		for(Value p : GetBrewJson([&](int pos, int total) { return pi.SetCanceled(pos, total); }))
-			src << ~p["name"] + " - " + ~p["desc"];
+		for(const auto& m : GetBrewPackages([&](int pos, int total) { return pi.SetCanceled(pos, total); }))
+			src << m.name + " - " + m.description;
+	}
+	else
+	if(IsPACMAN()) {
+		Vector<String> ls = Split(Sys("pacman -Ss ."), '\n');
+		String curpkg;
+		for(const String& l : ls) {
+			if(findarg(*l.Begin(), ' ', '\t') >= 0) { // It's a description line
+				if(!IsNull(curpkg)) {
+					src << curpkg + " - " + TrimLeft(l);
+					curpkg = Null;
+				}
+			}
+			else { // It might be a package name line (e.g., "extra/zlib 1.3.1-1")
+				if(int q = l.Find('/'), sp = l.Find(' ', q + 1); q >= 0 && sp > q)
+					curpkg = l.Mid(q + 1, sp - (q + 1));
+			}
+		}
 	}
 	else
 		src = Split(Sys(IsRPM() ? "dnf repoquery --queryformat '%{name} - %{summary}' '*'"
@@ -134,4 +151,41 @@ String SelectExternalDependency()
 	if(dlg.ExecuteOK())
 		return ~dlg.list.GetKey();
 	return Null;
+}
+
+struct ShowExtDepDlg : WithShowExtDepLayout<TopWindow> {
+	ShowExtDepDlg();
+	
+	void Sync();
+};
+
+ShowExtDepDlg::ShowExtDepDlg()
+{
+	CtrlLayoutExit(*this, "Show External Dependencies");
+
+	when <<= Join(GetExternalDependenciesKeys(), " ");
+	when << [this] { Sync(); };
+	when.AddList("VCPKG WIN32");
+	when.AddList("DPKG POSIX LINUX");
+	when.AddList("RPM POSIX LINUX");
+	when.AddList("PACMAN POSIX LINUX");
+	when.AddList("BREW POSIX MACOS");
+	
+	copy.SetImage(CtrlImg::copy());
+	copy << [this] { WriteClipboardText(list.Get().GetPlainText().ToString()); };
+	
+	Sync();
+}
+
+void ShowExtDepDlg::Sync()
+{
+	Index<String> l;
+	for(ExternalDependencyInfo f : RequiredExternalDependenciesInfo(Split(~~when, ' ')))
+		l.FindAdd(f.name);
+	list <<= "[g \1" + Join(l.GetKeys(), " ");
+}
+
+void ShowExternalDependencies()
+{
+	ShowExtDepDlg().Execute();
 }

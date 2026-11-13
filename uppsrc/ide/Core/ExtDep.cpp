@@ -1,25 +1,59 @@
 #include "Core.h"
 
-ExternalDependencyInfo GetExternalDependencyInfo(const String& txt)
+Index<String> AllHostPackagesList()
 {
-	ExternalDependencyInfo f;
-	f.name = txt;
-	int q = txt.Find(' ');
-	if(q >= 0) {
-		f.name = txt.Mid(0, q);
-		String h = TrimBoth(txt.Mid(q));
-		if(h.TrimStart("license(")) {
-			try {
-				CParser p(h);
-				f.license = p.ReadString();
-			}
-			catch(CParser::Error) {}
+	Index<String> list;
+	if(IsRPM() || IsDPKG())
+		for(String s : Split(Sys(IsRPM() ? "dnf repoquery --queryformat '%{name} - %{summary}' '*'"
+		                                 : "apt-cache search ."), '\n')) {
+			int q = s.Find(" - ");
+			if(q >= 0)
+				s.Trim(q);
+			list.FindAdd(s);
 		}
-	}
-	return f;
+	if(IsPACMAN())
+		for(String s : Split(Sys("pacman -Ssq ."), '\n'))
+			list.FindAdd(s);
+	if(IsBREW())
+		for(const auto& m : GetBrewPackages())
+			list.FindAdd(m.name);
+	if(IsVCPKG())
+		for(const auto& m : VcpkgListAll())
+			list.FindAdd(m.name);
+	return list;
 }
 
-Vector<ExternalDependencyInfo> RequiredExternalDependenciesInfo(const Package& pkg)
+
+void ParseExternalDependencyInfo(Vector<ExternalDependencyInfo>& r, const String& txt)
+{
+	int i0 = r.GetCount();
+	String license;
+	for(String s : Split(txt, ' '))
+		if(s.TrimStart("license(") && s.TrimEnd(")"))
+			license = s;
+		else {
+			if(r.GetCount() && (*s == '|' || *r.Top().name.Last() == '|'))
+				r.Top().name << s;
+			else
+				r.Add().name = s;
+		}
+	for(int i = i0; i < r.GetCount(); i++)
+		r[i].license = license;
+}
+
+Vector<ExternalDependencyInfo> RequiredExternalDependenciesInfo(const Package& pkg, const Vector<String>& keys)
+{
+	Vector<ExternalDependencyInfo> required;
+	for(const OptItem& m : pkg.external_dependency) {
+		if(MatchWhen(m.when, keys)) {
+			ParseExternalDependencyInfo(required, m.text);
+		}
+	}
+	Sort(required, [](const ExternalDependencyInfo& a, const ExternalDependencyInfo& b) { return a.name < b.name; });
+	return required;
+}
+
+Vector<String> GetExternalDependenciesKeys()
 {
 	Vector<String> keys;
 	keys << ExternalDependenciesManagerId();
@@ -38,14 +72,21 @@ Vector<ExternalDependencyInfo> RequiredExternalDependenciesInfo(const Package& p
 #ifdef PLATFORM_BSD
 	keys << "BSD";
 #endif
-	String ed;
+	return keys;
+}
+
+Vector<ExternalDependencyInfo> RequiredExternalDependenciesInfo(const Package& pkg)
+{
+	return RequiredExternalDependenciesInfo(pkg, GetExternalDependenciesKeys());
+}
+
+Vector<ExternalDependencyInfo> RequiredExternalDependenciesInfo(const Vector<String>& keys)
+{
 	Vector<ExternalDependencyInfo> required;
-	for(const OptItem& m : pkg.external_dependency) {
-		if(MatchWhen(m.when, keys)) {
-			ExternalDependencyInfo f = GetExternalDependencyInfo(m.text);
-			if(f.name.GetCount())
-				required << f;
-		}
+	const Workspace& wspc = GetIdeWorkspace();
+	for(int i = 0; i < wspc.GetCount(); i++) {
+		const Package& pkg = wspc.GetPackage(i);
+		required.Append(RequiredExternalDependenciesInfo(pkg, keys));
 	}
 	Sort(required, [](const ExternalDependencyInfo& a, const ExternalDependencyInfo& b) { return a.name < b.name; });
 	return required;
@@ -53,14 +94,7 @@ Vector<ExternalDependencyInfo> RequiredExternalDependenciesInfo(const Package& p
 
 Vector<ExternalDependencyInfo> RequiredExternalDependenciesInfo()
 {
-	Vector<ExternalDependencyInfo> required;
-	const Workspace& wspc = GetIdeWorkspace();
-	for(int i = 0; i < wspc.GetCount(); i++) {
-		const Package& pkg = wspc.GetPackage(i);
-		required.Append(RequiredExternalDependenciesInfo(pkg));
-	}
-	Sort(required, [](const ExternalDependencyInfo& a, const ExternalDependencyInfo& b) { return a.name < b.name; });
-	return required;
+	return RequiredExternalDependenciesInfo(GetExternalDependenciesKeys());
 }
 
 Vector<String> RequiredExternalDependencies(const Package& pkg)
@@ -82,10 +116,19 @@ Vector<String> RequiredExternalDependencies()
 Vector<String> MissingExternalDependencies(const String& triplet)
 {
 	Index<String> missi;
+	Index<String> available = AllHostPackagesList();
 	Index<String> installed = InstalledExternalDependencies(triplet);
-	for(String s : RequiredExternalDependencies())
+	for(String s : RequiredExternalDependencies()) {
+		Vector<String> ss = Split(s, '|');
+		if(ss.GetCount() > 1)
+			for(String h : ss)
+				if(available.Find(h) >= 0) {
+					s = h;
+					break;
+				}
 		if(installed.Find(s) < 0)
 			missi.FindAdd(s);
+	}
 	Vector<String> missing = missi.PickKeys();
 	Sort(missing);
 	return missing;
@@ -111,6 +154,16 @@ bool HasRPM()
 	return rpm;
 }
 
+bool HasPACMAN()
+{
+	static bool pacman
+#ifdef PLATFORM_LINUX
+		= Sys("which pacman").GetCount()
+#endif
+	;
+	return pacman;
+}
+
 String ExternalDependenciesManagerId()
 {
 #ifdef PLATFORM_WIN32
@@ -123,6 +176,8 @@ String ExternalDependenciesManagerId()
 		return "DPKG";
 	if(HasRPM())
 		return "RPM";
+	if(HasPACMAN())
+		return "PACMAN";
 	return Null;
 }
 
@@ -143,6 +198,9 @@ Index<String> InstalledExternalDependencies(const String& triplet)
 	if(IsRPM())
 		for(String l : Split(Sys("rpm -qa --qf '%{NAME}\n'"), '\n'))
 			r.FindAdd(TrimBoth(l));
+	if(IsPACMAN())
+		for(String l : Split(Sys("pacman -Qq"), '\n'))
+			r.FindAdd(TrimBoth(l));
 #endif
 	return r;
 }
@@ -158,8 +216,10 @@ String InstallMissingExternalDependenciesCommand0(const String& triplet)
 	}
 #endif
 #ifdef PLATFORM_LINUX
-	if(IsRPM() || IsDPKG()) {
-		cmd = IsRPM() ? "dnf install -y" : "apt-get install -y";
+	if(IsRPM() || IsDPKG() || IsPACMAN()) {
+		cmd = IsPACMAN() ? "pacman -S --noconfirm" :
+			  IsRPM()    ? "dnf install -y"
+						: "apt-get install -y";
 		for(String name : MissingExternalDependencies(triplet))
 			cmd << " " << name;
 	}
