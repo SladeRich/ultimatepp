@@ -60,7 +60,7 @@ void __LOGF__(const char *format, ...);
 #define LOGBEGIN()       UPP::VppLog() << UPP::LOG_BEGIN
 #define LOGEND()         UPP::VppLog() << UPP::LOG_END
 #define LOGBLOCK(n)      RLOGBLOCK(n)
-#define LOGHEXDUMP(s, a) UPP::HexDump(VppLog(), s, a)
+#define LOGHEXDUMP(s, a) UPP::HexDump(UPP::VppLog(), s, a)
 #define LOGHEX(x)        UPP::LogHex(x)
 #define QUOTE(a)         { LOG(#a); a; }
 #define LOGSRCPOS()      UPP::VppLog() << __FILE__ << '#' << __LINE__ << UPP::EOL

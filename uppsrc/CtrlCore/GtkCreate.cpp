@@ -165,10 +165,16 @@ void Ctrl::Create(Ctrl *owner, bool popup)
 	gtk_widget_set_app_paintable(top->window, TRUE);
 	gtk_widget_set_can_focus(top->window, TRUE);
 	isopen = true;
-
+	
 	top->im_context = gtk_im_multicontext_new();
+#ifdef USE_GTK_CLIENT_REALIZE
+	// The following is executed when needed, so as to prevent gtk_im_multicontext_new() from deadlocking
+	g_signal_connect(top->client, "realize", G_CALLBACK(RealizeGtkClientWindow), top); // Need to synchronize creating GTK window to prevent lock up when using DWARF
+#else
 	gtk_im_context_set_client_window(top->im_context, gdk());
 	gtk_im_context_set_use_preedit(top->im_context, true);
+	top->client_realized = true;
+#endif
 	g_signal_connect(top->im_context, "preedit-changed", G_CALLBACK(IMPreedit), (gpointer)(uintptr_t)top->id);
 	g_signal_connect(top->im_context, "preedit-start", G_CALLBACK(IMPreedit), (gpointer)(uintptr_t)top->id);
 	g_signal_connect(top->im_context, "preedit-end", G_CALLBACK(IMPreeditEnd), (gpointer)(uintptr_t)top->id);
