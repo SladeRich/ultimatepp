@@ -429,9 +429,9 @@ bool Pdb::AddThread(dword dwThreadId, Thread::Hnd  hThread)
 	DR_LOG("AddThread");
 	Thread& f = threads.GetAdd(dwThreadId);
 	// Retrive "base-level" stack-pointer, to have limit for stackwalks:
-	Context c = ReadContext(hThread);
+	Context c = ReadContext(dwThreadId);
 	f.sp = c.GetSP(win64);
-	f.hThread = hThread;
+	f.hThread = dwThreadId;
 	LLOG("Adding thread " << dwThreadId << ", Thread SP: 0x" << Hex(f.sp) << ", handle: 0x" << FormatIntHex((dword)(uintptr_t)(hThread)) << " of " << threads.GetCount());
 	return true;
 }
@@ -722,7 +722,7 @@ bool Pdb::RunToException()
 					DR_LOG("Create main thread: " << pid);
 					LLOG("Create main thread: " << pid);
 				}
-#if 0 // Fixme - when GUI runs gtk_im_multicontext_new() is locking up?
+#ifdef USE_GTK_CLIENT_REALIZE // Fixme - when GUI runs the function gtk_im_context_set_client_window(), it locks up; defining USE_GTK_CLIENT_REALIZE partially fixes it
 				ptrace(PTRACE_SETOPTIONS, mainThreadId, NULL, PTRACE_O_TRACECLONE|PTRACE_O_TRACEFORK); // Enable multi threading debugging
 #endif
 			}
@@ -889,7 +889,7 @@ bool Pdb::RunToException()
 				LLOG("Continued "<<pid);
 			}
 			LLOG("<<< Debugee continuing "<<pid);
-			ptrace(PTRACE_CONT, pid, NULL, NULL);
+			ptrace(PTRACE_CONT, pid, NULL, WSTOPSIG(status));
 			running = true;
 		}
 

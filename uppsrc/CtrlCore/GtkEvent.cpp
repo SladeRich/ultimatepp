@@ -230,7 +230,7 @@ gboolean Ctrl::GtkEvent(GtkWidget *widget, GdkEvent *event, gpointer user_data)
 		p->CancelPreedit();
 		if(p) {
 			Top *top = p->GetTop();
-			if(top && top->im_context) {
+			if(top && top->im_context && top->client_realized) {
 				if(((GdkEventFocus *)event)->in)
 					gtk_im_context_focus_in(top->im_context);
 				else
@@ -286,7 +286,7 @@ gboolean Ctrl::GtkEvent(GtkWidget *widget, GdkEvent *event, gpointer user_data)
 	case GDK_KEY_RELEASE:
 		key = (GdkEventKey *)event;
 		value << (int) key->keyval << (int) key->hardware_keycode;
-		if(pressed && top && gtk_im_context_filter_keypress(top->im_context, key))
+		if(pressed && top && top->client_realized && gtk_im_context_filter_keypress(top->im_context, key))
 			return true;
 		break;
 //	case GDK_EXPOSE:
@@ -499,6 +499,20 @@ void Ctrl::IMCommit(GtkIMContext *context, gchar *str, gpointer user_data)
 	AddEvent(user_data, EVENT_TEXT, ToUtf32(str), NULL);
 }
 
+
+#ifdef USE_GTK_CLIENT_REALIZE
+gboolean Ctrl::RealizeGtkClientWindow(gpointer param)
+{
+    Top *top = (Top*)param;
+	GdkWindow* gdkWin = gtk_widget_get_window(top->window);
+	LLOG("Realize GTK client window top:"<<top<<" im_context:"<<top->im_context<<" window:"<<gdkWin);
+	gtk_im_context_set_client_window(top->im_context, gdkWin);
+	gtk_im_context_set_use_preedit(top->im_context, true);
+	top->client_realized = true;
+	return G_SOURCE_REMOVE;
+}
+#endif
+
 void Ctrl::IMLocation(Ctrl *w)
 {
 	if(w && w->HasFocusDeep() && focusCtrl && !IsNull(focusCtrl->GetPreedit())) {
@@ -510,7 +524,7 @@ void Ctrl::IMLocation(Ctrl *w)
 		gr.width = LSC(e.GetWidth());
 		gr.height = LSC(e.GetHeight());
 		Top *top = w->GetTop();
-		if(top)
+		if(top && top->client_realized)
 			gtk_im_context_set_cursor_location(top->im_context, &gr);
 	}
 }

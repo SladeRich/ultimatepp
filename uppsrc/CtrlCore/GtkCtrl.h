@@ -5,6 +5,10 @@
 	static void     IMPreedit(GtkIMContext *context, gpointer user_data);
 	static void     IMPreeditEnd(GtkIMContext *context, gpointer user_data);
 	static void     IMLocation(Ctrl *w);
+	#ifdef flagDEBUG
+	#define USE_GTK_CLIENT_REALIZE
+	static gboolean RealizeGtkClientWindow(gpointer param);
+	#endif
 
 	static int      DoButtonEvent(GdkEvent *event, bool press);
 	static void     AddEvent(gpointer user_data, int type, const Value& value, GdkEvent *event);

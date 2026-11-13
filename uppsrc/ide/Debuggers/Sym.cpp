@@ -875,7 +875,7 @@ bool Pdb::GetTypeVal(Pdb::Val* val, Dwarf_Die die) {
 							NEVER();
 						}
 						else if (exp.atom == DW_OP_addr) { // Literal encoding, value at address
-							NEVER();
+							adr = exp.number;
 						}
 						else if (exp.atom == DW_OP_constu) { // Literal encoding, unsigned value on to the stack
 							NEVER();
@@ -887,7 +887,7 @@ bool Pdb::GetTypeVal(Pdb::Val* val, Dwarf_Die die) {
 							NEVER();
 						}
 						else if (exp.atom == DW_OP_deref) { // Stack operations - Treats the top of the stack as a memory address, and replaces it with the contents of that address
-							NEVER();
+							adr = ptrace(PTRACE_PEEKDATA, debug_threadid, exp.number, 0);
 						}
 						else if (exp.atom == DW_OP_and) { // Logical operations - Pops the top two values from the stack and pushes back the logical AND of them
 							NEVER();

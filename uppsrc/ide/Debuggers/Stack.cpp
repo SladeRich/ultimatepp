@@ -121,10 +121,11 @@ Array<Pdb::Frame> Pdb::Backtrace(Thread& ctx, bool single_frame, bool thread_inf
 
 	// Dwarf implementation - use unwind to get the stack
 	unw_addr_space_t as = unw_create_addr_space(&_UPT_accessors, 0);
-	void* ui = _UPT_create(mainThreadId);
+	void* ui = _UPT_create(cctx.hThread);
 	unw_cursor_t cursor;
 	if (unw_init_remote(&cursor, as, ui) >= 0) {
 		uint64 lastFrame = 0; // Prevent loops with optimised stackframes
+		LLOG("Pdb::Backtrace for thread "<<cctx.hThread);
 		// Unwind frames one by one, going up the frame stack
 		do {
 			unw_word_t ip, sp, bp, offset;
@@ -145,7 +146,6 @@ Array<Pdb::Frame> Pdb::Backtrace(Thread& ctx, bool single_frame, bool thread_inf
 			char name[256];
 			name[0] = 0;
 			unw_get_proc_name(&cursor, name, sizeof(name), &offset);
-			LLOG("Pdb::Backtrace 0x"<<Hex(ip)<<": ("<<name<<"+0x"<<offset<<") [sp=0x"<<Hex(sp)<<"]");
 			lastFrame = offset;
 			Frame& f = frame.Add();
 			f.pc = ip;
@@ -154,7 +154,7 @@ Array<Pdb::Frame> Pdb::Backtrace(Thread& ctx, bool single_frame, bool thread_inf
 			f.fn = GetFnInfo(f.pc);
 			if (f.fn.name.IsEmpty())
 				f.fn.name = name;
-			LLOG("Pdb::Backtrace 0x"<<Hex(f.pc)<<": ("<<f.fn.name<<"+0x"<<f.frame<<") [sp=0x"<<Hex(f.stack)<<"]");
+			LLOG("\t 0x"<<Hex(f.pc)<<": ("<<f.fn.name<<"+0x"<<f.frame<<") [sp=0x"<<Hex(f.stack)<<"]");
 			if(thread_info) {
 				if(frame.GetCount() > 20)
 					break;
