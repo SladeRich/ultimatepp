@@ -699,8 +699,32 @@ void Pdb::DebugDumpKid(Dwarf_Die *die, unsigned depth, unsigned *cnt, unsigned *
 			case DW_TAG_enumeration_type:
 				if (verbose || name) {
 					const char *tagName = "DW_TAG_enumeration_type";
+					const char *file = dwarf_decl_file(die);
+					int line = -1;
+					dwarf_decl_line(die, &line);
+					Dwarf_Word size = -1;
+					Dwarf_Attribute sizeAttr;
+					if (dwarf_attr(die, DW_AT_byte_size, &sizeAttr)) {
+						dwarf_formudata(&sizeAttr, &size);
+					}
 					s << offset<<push<<" "<<tagName<<" #"<<tag;
 					s << " name:'"<<(name ?: "")<<"'";
+					s << " size:"<<size;
+					s << " line:"<<line<<" file:" << (file ?:"");
+					(*disp)++;
+				}
+				break;
+			case DW_TAG_enumerator:
+				if (verbose || name) {
+					const char *tagName = "DW_TAG_enumerator";
+					Dwarf_Word value = -1;
+					Dwarf_Attribute valueAttr;
+					if (dwarf_attr(die, DW_AT_const_value, &valueAttr)) {
+						dwarf_formudata(&valueAttr, &value);
+					}
+					s << offset<<push<<" "<<tagName<<" #"<<tag;
+					s << " name:'"<<(name ?: "")<<"'";
+					s << " value:"<<value;
 					(*disp)++;
 				}
 				break;

@@ -700,6 +700,10 @@ bool Pdb::GetTypeVal(Pdb::Val* val, Dwarf_Die die) {
 							}
 							udt = true;
 						}
+						else if (typeTag==DW_TAG_enumeration_type) {
+							LLOG("\t\t\t enum Ref:"<<dwarf_dieoffset(&typeDie));
+							valType = SINT4;
+						}
 						else if (typeTag==DW_TAG_array_type) {
 							LLOG("\t\t\t array");
 							ref = 1;
