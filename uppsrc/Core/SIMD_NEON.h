@@ -190,7 +190,6 @@ force_inline i32x4  operator==(i32x4 a, i32x4 b)  { return vreinterpretq_s32_u32
 force_inline i32x4  operator<(i32x4 a, i32x4 b)   { return vreinterpretq_s32_u32(vcltq_s32(a, b)); }
 force_inline i32x4  operator>(i32x4 a, i32x4 b)   { return vreinterpretq_s32_u32(vcgtq_s32(a, b)); }
 
-force_inline uint64 cmask32__(uint32x4_t mask)      { return cmask16__(vreinterpretq_u16_u32(mask)); }
 force_inline uint64 cmask32__(int32x4_t mask)       { return cmask16__(vreinterpretq_s16_s32(mask)); }
 force_inline bool   AllTrue(i32x4 a)                { return cmask32__(a.data) == cmask_all__; }
 force_inline bool   AnyTrue(i32x4 a)                { return cmask32__(a.data); }
