@@ -299,13 +299,11 @@ void RichTxt::GetRichPos(int pos, RichPos& rp, int ti, int maxlevel, const RichS
 				rp.posincell = pos;
 				rp.tabsize = tab.GetSize();
 				rp.tablen = tab.GetLength();
-				const RichTxt& ct = tab[rp.cell].text;
-				rp.celllen = ct.GetLength();
-				rp.parenttab = pti;
-				rp.table = ti + 1;
 				if (rp.cell.x<tab.GetColumns() && rp.cell.y<tab.GetRows()) { // Prevent malformed tables from crashing
 					const RichTxt& ct = tab[rp.cell].text;
 					rp.celllen = ct.GetLength();
+					rp.parenttab = pti;
+					rp.table = ti + 1;
 					if(rp.level < maxlevel) {
 						ct.GetRichPos(pos, rp, ti + 1 + tab.GetTableCount(rp.cell), maxlevel, st);
 					}
@@ -552,7 +550,7 @@ String RichCellPos::ToString() const
 {
 	String s;
 	s << "pos: " << pos << ", textlen: " << textlen << ", size: " << tabsize << ", tabpos: " << tabpos
-	  << ", tablen: " << tablen << ", cellpos: " << cellpos << ", level: " << level;
+	  << ", tablen: " << tablen << ", cellpos: " << cellpos;
 	return s;
 }
 
