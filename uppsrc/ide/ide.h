@@ -1057,7 +1057,6 @@ public:
 		void  LaunchAndroidAVDManager(const AndroidSDK& androidSDK);
 
 	void      AssistMenu(Bar& menu);
-	void      AIMenu(Bar& menu);
 	void      BrowseMenu(Bar& menu);
 		void  QueryId();
 		void  OpenTopic(const String& topic, const String& create_id, bool before);
@@ -1100,9 +1099,6 @@ public:
 		void  NavigatorDlg();
 		void  InsertParameters();
 		void  FindUnitializedMemberVariables(int scope);
-		void  AIPane();
-		void  AIReview();
-
 
 	void      HelpMenu(Bar& menu);
 	    void  ViewIdeLogFile();
@@ -1371,8 +1367,7 @@ public:
 		String result;
 		String error;
 	};
-
-
+	
 	AIThread AIChatGPT(const String& instructions, const String& code, const String& prev_id = Null);
 	AIThread AIGemini(const String& instructions, const String& code, const String& prev_id = Null);
 	AIThread AI(const String& instructions, const String& code, const String& prev_id = Null);
@@ -1381,6 +1376,11 @@ public:
 	void     AILink(const String& link);
 	void     AIPrompt2(const String& prompt);
 	void     AIAppendOutput(const String& qtf);
+	void     AIPane();
+	void     AIChat();
+	String   GetAIFileMap();
+	String   GetAISummaries();
+	void     AISummary();
 
 	String   ai_prev;
 
